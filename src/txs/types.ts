@@ -1,19 +1,18 @@
 import { Address, InlineTxOutputDatum, TxInput } from "@helios-lang/ledger";
 
-interface OrderedAsset {
-  // without asset name label
-  hexName: string;
-  utf8Name: string;
-  destinationAddress: Address;
-  price: bigint;
-}
-
 interface Order {
   orderTxInput: TxInput;
-  // without asset name label
-  assetUtf8Name: string;
-  // asset datum
-  assetDatum: InlineTxOutputDatum;
+  // asset utf8 name
+  assetsInfo: Array<[string, InlineTxOutputDatum]>;
 }
 
-export type { Order, OrderedAsset };
+interface DecodedOrder {
+  orderTxInput: TxInput;
+  // asset utf8 name
+  assetsInfo: Array<[string, InlineTxOutputDatum]>;
+  destinationAddress: Address;
+  price: bigint;
+  amount: number;
+}
+
+export type { DecodedOrder, Order };

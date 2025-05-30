@@ -74,7 +74,7 @@ const buildContracts = (params: BuildContractsParams) => {
   );
 
   // "orders_mint.mint"
-  const ordersMintUplcProgram = getOrdersMintUplcProgram(halPolicyHash.toHex());
+  const ordersMintUplcProgram = getOrdersMintUplcProgram();
   const ordersMintValidatorHash = makeValidatorHash(
     ordersMintUplcProgram.hash()
   );

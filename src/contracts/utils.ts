@@ -50,20 +50,6 @@ const makeMintingDataUplcProgramParameterDatum = (
   );
 };
 
-const makeOrdersMintUplcProgramParameter = (
-  hal_policy_id: string
-): UplcValue[] => {
-  return [makeUplcDataValue(makeByteArrayData(hal_policy_id))];
-};
-
-const makeOrdersMintUplcProgramParameterDatum = (
-  hal_policy_id: string
-): InlineTxOutputDatum => {
-  return makeInlineTxOutputDatum(
-    makeListData([makeByteArrayData(hal_policy_id)])
-  );
-};
-
 const makeOrdersSpendUplcProgramParameter = (
   hal_policy_id: string,
   orders_mint_policy_id: string
@@ -93,8 +79,6 @@ export {
   makeMintProxyUplcProgramParameterDatum,
   makeMintV1UplcProgramParameter,
   makeMintV1UplcProgramParameterDatum,
-  makeOrdersMintUplcProgramParameter,
-  makeOrdersMintUplcProgramParameterDatum,
   makeOrdersSpendUplcProgramParameter,
   makeOrdersSpendUplcProgramParameterDatum,
 };

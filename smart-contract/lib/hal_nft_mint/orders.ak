@@ -9,4 +9,6 @@ pub type OrderDatum {
   price: Int,
   // address that the asset should be sent to
   destination_address: Address,
+  // amount of HAL NFTs to mint
+  amount: Int,
 }

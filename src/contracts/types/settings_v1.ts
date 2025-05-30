@@ -25,6 +25,8 @@ interface SettingsV1 {
   // required when spending H.A.L. reference asset
   // from Ref Spend Spending validator
   ref_spend_admin: string;
+  // Maximum Amount of H.A.L. NFTs that can be ordered at once
+  max_order_amount: number;
 }
 
 export type { SettingsV1 };

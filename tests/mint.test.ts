@@ -15,9 +15,10 @@ import {
   inspect,
   invariant,
   mayFailTransaction,
-  mint,
   Order,
+  prepareMintTransaction,
   request,
+  rollBackOrdersFromTrie,
   update,
 } from "../src/index.js";
 import { myTest } from "./setup.js";
@@ -31,9 +32,9 @@ import {
 } from "./utils.js";
 
 describe.sequential("Koralab H.A.L Tests", () => {
-  // user_1 orders new asset
+  // user_1 orders 2 new assets
   myTest(
-    "user_1 orders new asset",
+    "user_1 orders 2 new assets",
     async ({ network, emulator, wallets, ordersTxInputs, deployedScripts }) => {
       invariant(
         Array.isArray(ordersTxInputs),
@@ -46,6 +47,7 @@ describe.sequential("Koralab H.A.L Tests", () => {
       const txBuilderResult = await request({
         network,
         address: user1Wallet.address,
+        amount: 2,
         deployedScripts,
       });
       invariant(txBuilderResult.ok, "Order Tx Building failed");
@@ -72,9 +74,9 @@ describe.sequential("Koralab H.A.L Tests", () => {
     }
   );
 
-  // mint new asset - <hal-1>
+  // mint 2 new assets - <hal-1, hal-2>
   myTest(
-    "mint new asset - <hal-1>",
+    "mint 2 new assets - <hal-1, hal-2>",
     async ({
       mockedFunctions,
       db,
@@ -89,26 +91,34 @@ describe.sequential("Koralab H.A.L Tests", () => {
         "Orders tx inputs is not an array"
       );
 
-      const { usersWallets, allowedMinterWallet, paymentWallet } = wallets;
+      const {
+        usersWallets,
+        allowedMinterWallet,
+        paymentWallet,
+        orderNftsCollectorWallet,
+      } = wallets;
       const user1Wallet = usersWallets[0];
 
-      const orders: Order[] = ordersTxInputs.map((orderTxInput) => ({
+      const assetNamesList = [["hal-1", "hal-2"]];
+      const orders: Order[] = ordersTxInputs.map((orderTxInput, index) => ({
         orderTxInput,
-        assetUtf8Name: "hal-1",
-        assetDatum: makeHalAssetDatum("hal-1"),
+        assetsInfo: assetNamesList[index].map((assetName) => [
+          assetName,
+          makeHalAssetDatum(assetName),
+        ]),
       }));
-      const assetNames = ["hal-1"];
 
-      const txBuilderResult = await mint({
+      const txBuilderResult = await prepareMintTransaction({
         network,
         address: allowedMinterWallet.address,
+        orderNftsCollector: orderNftsCollectorWallet.address,
         orders,
         db,
         deployedScripts,
       });
       invariant(txBuilderResult.ok, "Mint Tx Building Failed");
 
-      const txBuilder = txBuilderResult.data;
+      const { txBuilder } = txBuilderResult.data;
       txBuilder.addCollateral((await allowedMinterWallet.utxos)[0]);
       const txResult = await mayFailTransaction(
         txBuilder,
@@ -134,18 +144,20 @@ describe.sequential("Koralab H.A.L Tests", () => {
         ref_spend_script_address
       );
 
-      assert(
-        user1Balance.isGreaterOrEqual(
-          userAssetValue(settingsV1.policy_id, assetNames[0])
-        ) == true,
-        "User 1 Wallet Balance is not correct"
-      );
-      assert(
-        refSpendBalance.isGreaterOrEqual(
-          referenceAssetValue(settingsV1.policy_id, assetNames[0])
-        ) == true,
-        "Ref Spend Wallet Balance is not correct"
-      );
+      for (const assetName of assetNamesList[0]) {
+        assert(
+          user1Balance.isGreaterOrEqual(
+            userAssetValue(settingsV1.policy_id, assetName)
+          ) == true,
+          "User 1 Wallet Balance is not correct"
+        );
+        assert(
+          refSpendBalance.isGreaterOrEqual(
+            referenceAssetValue(settingsV1.policy_id, assetName)
+          ) == true,
+          "Ref Spend Wallet Balance is not correct"
+        );
+      }
 
       // update minting data input
       const mintingDataAssetTxInput = await emulator.getUtxo(
@@ -171,9 +183,9 @@ describe.sequential("Koralab H.A.L Tests", () => {
     }
   );
 
-  // user_1 orders 2 new assets
+  // user_1 orders 3 new assets
   myTest(
-    "user_1 orders 2 new assets",
+    "user_1 orders 3 new assets",
     async ({ network, emulator, wallets, ordersTxInputs, deployedScripts }) => {
       invariant(
         Array.isArray(ordersTxInputs),
@@ -183,40 +195,39 @@ describe.sequential("Koralab H.A.L Tests", () => {
       const { usersWallets, ordersMinterWallet } = wallets;
       const user1Wallet = usersWallets[0];
 
-      for (let i = 0; i < 2; i++) {
-        const txBuilderResult = await request({
-          network,
-          address: user1Wallet.address,
-          deployedScripts,
-        });
-        invariant(txBuilderResult.ok, "Order Tx Building failed");
+      const txBuilderResult = await request({
+        network,
+        address: user1Wallet.address,
+        amount: 3,
+        deployedScripts,
+      });
+      invariant(txBuilderResult.ok, "Order Tx Building failed");
 
-        const txBuilder = txBuilderResult.data;
-        const txResult = await mayFailTransaction(
-          txBuilder,
-          user1Wallet.address,
-          await user1Wallet.utxos
-        ).complete();
-        invariant(txResult.ok, "Order Tx Complete failed");
-        logMemAndCpu(txResult);
+      const txBuilder = txBuilderResult.data;
+      const txResult = await mayFailTransaction(
+        txBuilder,
+        user1Wallet.address,
+        await user1Wallet.utxos
+      ).complete();
+      invariant(txResult.ok, "Order Tx Complete failed");
+      logMemAndCpu(txResult);
 
-        const { tx } = txResult.data;
-        tx.addSignatures([
-          ...(await user1Wallet.signTx(tx)),
-          ...(await ordersMinterWallet.signTx(tx)),
-        ]);
-        const txId = await user1Wallet.submitTx(tx);
-        emulator.tick(200);
+      const { tx } = txResult.data;
+      tx.addSignatures([
+        ...(await user1Wallet.signTx(tx)),
+        ...(await ordersMinterWallet.signTx(tx)),
+      ]);
+      const txId = await user1Wallet.submitTx(tx);
+      emulator.tick(200);
 
-        const orderTxInput = await emulator.getUtxo(makeTxOutputId(txId, 0));
-        ordersTxInputs.push(orderTxInput);
-      }
+      const orderTxInput = await emulator.getUtxo(makeTxOutputId(txId, 0));
+      ordersTxInputs.push(orderTxInput);
     }
   );
 
-  // user_2 orders 2 new assets
+  // user_2 orders 3 new assets
   myTest(
-    "user_2 orders 2 new assets",
+    "user_2 orders 3 new assets",
     async ({ network, emulator, wallets, ordersTxInputs, deployedScripts }) => {
       invariant(
         Array.isArray(ordersTxInputs),
@@ -226,40 +237,39 @@ describe.sequential("Koralab H.A.L Tests", () => {
       const { usersWallets, ordersMinterWallet } = wallets;
       const user2Wallet = usersWallets[1];
 
-      for (let i = 0; i < 2; i++) {
-        const txBuilderResult = await request({
-          network,
-          address: user2Wallet.address,
-          deployedScripts,
-        });
-        invariant(txBuilderResult.ok, "Order Tx Building failed");
+      const txBuilderResult = await request({
+        network,
+        address: user2Wallet.address,
+        amount: 3,
+        deployedScripts,
+      });
+      invariant(txBuilderResult.ok, "Order Tx Building failed");
 
-        const txBuilder = txBuilderResult.data;
-        const txResult = await mayFailTransaction(
-          txBuilder,
-          user2Wallet.address,
-          await user2Wallet.utxos
-        ).complete();
-        invariant(txResult.ok, "Order Tx Complete failed");
-        logMemAndCpu(txResult);
+      const txBuilder = txBuilderResult.data;
+      const txResult = await mayFailTransaction(
+        txBuilder,
+        user2Wallet.address,
+        await user2Wallet.utxos
+      ).complete();
+      invariant(txResult.ok, "Order Tx Complete failed");
+      logMemAndCpu(txResult);
 
-        const { tx } = txResult.data;
-        tx.addSignatures([
-          ...(await user2Wallet.signTx(tx)),
-          ...(await ordersMinterWallet.signTx(tx)),
-        ]);
-        const txId = await user2Wallet.submitTx(tx);
-        emulator.tick(200);
+      const { tx } = txResult.data;
+      tx.addSignatures([
+        ...(await user2Wallet.signTx(tx)),
+        ...(await ordersMinterWallet.signTx(tx)),
+      ]);
+      const txId = await user2Wallet.submitTx(tx);
+      emulator.tick(200);
 
-        const orderTxInput = await emulator.getUtxo(makeTxOutputId(txId, 0));
-        ordersTxInputs.push(orderTxInput);
-      }
+      const orderTxInput = await emulator.getUtxo(makeTxOutputId(txId, 0));
+      ordersTxInputs.push(orderTxInput);
     }
   );
 
-  // mint 4 new asset - <hal-11, hal-12, hal-13, hal-14>
+  // mint 6 new assets - <hal-3, hal-4, hal-5> for user_1 and <hal-6, hal-7, hal-8> for user_2
   myTest(
-    "mint 4 new asset - <hal-11, hal-12, hal-13, hal-14>",
+    "mint 6 new assets - <hal-3, hal-4, hal-5> for user_1 and <hal-6, hal-7, hal-8> for user_2",
     async ({
       mockedFunctions,
       db,
@@ -274,28 +284,37 @@ describe.sequential("Koralab H.A.L Tests", () => {
         "Orders tx inputs is not an array"
       );
 
-      const { usersWallets, allowedMinterWallet, paymentWallet } = wallets;
-      const user1Wallet = usersWallets[0];
-      const user2Wallet = usersWallets[1];
+      const {
+        usersWallets,
+        allowedMinterWallet,
+        paymentWallet,
+        orderNftsCollectorWallet,
+      } = wallets;
+      const [user1Wallet, user2Wallet] = usersWallets;
 
+      const assetNamesList = [
+        ["hal-3", "hal-4", "hal-5"],
+        ["hal-6", "hal-7", "hal-8"],
+      ];
       const orders: Order[] = ordersTxInputs.map((orderTxInput, index) => ({
         orderTxInput,
-        assetUtf8Name: `hal-${index + 11}`,
-        assetDatum: makeHalAssetDatum(`hal-${index + 11}`),
+        assetsInfo: assetNamesList[index].map((assetName) => [
+          assetName,
+          makeHalAssetDatum(assetName),
+        ]),
       }));
-      const user1AssetNames = ["hal-11", "hal-12"];
-      const user2AssetNames = ["hal-13", "hal-14"];
 
-      const txBuilderResult = await mint({
+      const txBuilderResult = await prepareMintTransaction({
         network,
         address: allowedMinterWallet.address,
+        orderNftsCollector: orderNftsCollectorWallet.address,
         orders,
         db,
         deployedScripts,
       });
       invariant(txBuilderResult.ok, "Mint Tx Building Failed");
 
-      const txBuilder = txBuilderResult.data;
+      const { txBuilder } = txBuilderResult.data;
       txBuilder.addCollateral((await allowedMinterWallet.utxos)[0]);
       const txResult = await mayFailTransaction(
         txBuilder,
@@ -322,7 +341,7 @@ describe.sequential("Koralab H.A.L Tests", () => {
         ref_spend_script_address
       );
 
-      user1AssetNames.map((assetName) => {
+      for (const assetName of assetNamesList[0]) {
         assert(
           user1Balance.isGreaterOrEqual(
             userAssetValue(settingsV1.policy_id, assetName)
@@ -335,9 +354,8 @@ describe.sequential("Koralab H.A.L Tests", () => {
           ) == true,
           "Ref Spend Wallet Balance is not correct"
         );
-      });
-
-      user2AssetNames.map((assetName) => {
+      }
+      for (const assetName of assetNamesList[1]) {
         assert(
           user2Balance.isGreaterOrEqual(
             userAssetValue(settingsV1.policy_id, assetName)
@@ -350,7 +368,7 @@ describe.sequential("Koralab H.A.L Tests", () => {
           ) == true,
           "Ref Spend Wallet Balance is not correct"
         );
-      });
+      }
 
       // update minting data input
       const mintingDataAssetTxInput = await emulator.getUtxo(
@@ -441,9 +459,9 @@ describe.sequential("Koralab H.A.L Tests", () => {
     }
   );
 
-  // user_2 orders 2 new assets
+  // user_2 orders 2 new assets 2 times
   myTest(
-    "user_2 orders 2 new assets",
+    "user_2 orders 2 new assets 2 times",
     async ({ network, emulator, wallets, ordersTxInputs, deployedScripts }) => {
       invariant(
         Array.isArray(ordersTxInputs),
@@ -457,6 +475,7 @@ describe.sequential("Koralab H.A.L Tests", () => {
         const txBuilderResult = await request({
           network,
           address: user2Wallet.address,
+          amount: 2,
           deployedScripts,
         });
         invariant(txBuilderResult.ok, "Order Tx Building failed");
@@ -484,27 +503,33 @@ describe.sequential("Koralab H.A.L Tests", () => {
     }
   );
 
-  // cannot mint 2 new assets because one asset name is not pre-defined in MPT - <hal-2, no-hal-1>
+  // cannot mint 2 new assets because one asset name is not pre-defined in MPT - <hal-9, hal-10> and <hal-11, no-hal-12>
   myTest(
-    "cannot mint 2 new assets because one asset name is not pre-defined in MPT - <hal-2, no-hal-1>",
+    "cannot mint 2 new assets because one asset name is not pre-defined in MPT - <hal-9, hal-10> and <hal-11, no-hal-12>",
     async ({ network, db, wallets, ordersTxInputs, deployedScripts }) => {
       invariant(
         Array.isArray(ordersTxInputs),
         "Orders tx inputs is not an array"
       );
 
-      const { allowedMinterWallet } = wallets;
+      const { allowedMinterWallet, orderNftsCollectorWallet } = wallets;
 
-      const assetNames = ["hal-2", "no-hal-1"];
-      const orders: Order[] = ordersTxInputs.map((orderTxInput, i) => ({
+      const assetNamesList = [
+        ["hal-9", "hal-10"],
+        ["hal-11", "no-hal-12"],
+      ];
+      const orders: Order[] = ordersTxInputs.map((orderTxInput, index) => ({
         orderTxInput,
-        assetUtf8Name: assetNames[i],
-        assetDatum: makeHalAssetDatum(assetNames[i]),
+        assetsInfo: assetNamesList[index].map((assetName) => [
+          assetName,
+          makeHalAssetDatum(assetName),
+        ]),
       }));
 
-      const txResult = await mint({
+      const txResult = await prepareMintTransaction({
         network,
         address: allowedMinterWallet.address,
+        orderNftsCollector: orderNftsCollectorWallet.address,
         orders,
         db,
         deployedScripts,
@@ -512,9 +537,12 @@ describe.sequential("Koralab H.A.L Tests", () => {
       invariant(!txResult.ok, "Mint Tx Building Should Fail");
       assert(txResult.error.message.includes("Asset name is not pre-defined"));
 
-      // revert
-      await db.delete("hal-2");
-      await db.insert("hal-2", "");
+      // roll back
+      const rollBackResult = await rollBackOrdersFromTrie({
+        orders,
+        db,
+      });
+      invariant(rollBackResult.ok, "Roll Back Failed");
     }
   );
 
@@ -556,104 +584,55 @@ describe.sequential("Koralab H.A.L Tests", () => {
     }
   );
 
-  // can cancel orders one by one
+  // can cancel one order
   myTest(
-    "can cancel orders one by one",
+    "can cancel one order",
     async ({ network, emulator, wallets, ordersTxInputs, deployedScripts }) => {
       invariant(
         Array.isArray(ordersTxInputs),
         "Orders tx inputs is not an array"
       );
 
-      for (let i = 0; i < 2; i++) {
-        const { usersWallets } = wallets;
-        const user2Wallet = usersWallets[1];
-        const beforeUser2Lovelace = (await balanceOfWallet(user2Wallet))
-          .lovelace;
+      const { usersWallets } = wallets;
+      const user2Wallet = usersWallets[1];
+      const beforeUser2Lovelace = (await balanceOfWallet(user2Wallet)).lovelace;
 
-        const txBuilderResult = await cancel({
-          network,
-          address: user2Wallet.address,
-          orderTxInput: ordersTxInputs[i],
-          deployedScripts,
-        });
-        invariant(txBuilderResult.ok, "Cancel Tx Building failed");
+      const txBuilderResult = await cancel({
+        network,
+        address: user2Wallet.address,
+        orderTxInput: ordersTxInputs[1],
+        deployedScripts,
+      });
+      invariant(txBuilderResult.ok, "Cancel Tx Building failed");
 
-        const txBuilder = txBuilderResult.data;
-        const txResult = await mayFailTransaction(
-          txBuilder,
-          user2Wallet.address,
-          await user2Wallet.utxos
-        ).complete();
-        invariant(txResult.ok, "Cancel Tx Complete failed");
-        logMemAndCpu(txResult);
+      const txBuilder = txBuilderResult.data;
+      const txResult = await mayFailTransaction(
+        txBuilder,
+        user2Wallet.address,
+        await user2Wallet.utxos
+      ).complete();
+      invariant(txResult.ok, "Cancel Tx Complete failed");
+      logMemAndCpu(txResult);
 
-        const { tx } = txResult.data;
-        tx.addSignatures(await user2Wallet.signTx(tx));
-        await user2Wallet.submitTx(tx);
-        emulator.tick(200);
+      const { tx } = txResult.data;
+      tx.addSignatures(await user2Wallet.signTx(tx));
+      await user2Wallet.submitTx(tx);
+      emulator.tick(200);
 
-        const afterUser2Lovelace = (await balanceOfWallet(user2Wallet))
-          .lovelace;
+      const afterUser2Lovelace = (await balanceOfWallet(user2Wallet)).lovelace;
 
-        invariant(
-          afterUser2Lovelace - beforeUser2Lovelace > HAL_NFT_PRICE - 1_000_000n,
-          "User 2 Lovelace is not correct"
-        );
-      }
-
-      ordersTxInputs.length = 0;
-    }
-  );
-
-  // ======= mint many assets =======
-
-  // user_1 orders many assets - <15 assets>
-  myTest(
-    "user_1 orders many assets - <15 assets>",
-    async ({ network, emulator, wallets, deployedScripts, ordersTxInputs }) => {
       invariant(
-        Array.isArray(ordersTxInputs),
-        "Orders tx inputs is not an array"
+        afterUser2Lovelace - beforeUser2Lovelace > HAL_NFT_PRICE - 1_000_000n,
+        "User 2 Lovelace is not correct"
       );
 
-      const { usersWallets, ordersMinterWallet } = wallets;
-      const user1Wallet = usersWallets[0];
-
-      for (let i = 0; i < 15; i++) {
-        const txBuilderResult = await request({
-          network,
-          address: user1Wallet.address,
-          deployedScripts,
-        });
-        invariant(txBuilderResult.ok, "Order tx failed");
-
-        const txBuilder = txBuilderResult.data;
-        const txResult = await mayFailTransaction(
-          txBuilder,
-          user1Wallet.address,
-          await user1Wallet.utxos
-        ).complete();
-        invariant(txResult.ok, "Order Tx Complete failed");
-        logMemAndCpu(txResult);
-
-        const { tx } = txResult.data;
-        tx.addSignatures([
-          ...(await user1Wallet.signTx(tx)),
-          ...(await ordersMinterWallet.signTx(tx)),
-        ]);
-        const txId = await user1Wallet.submitTx(tx);
-        emulator.tick(200);
-
-        const orderTxInput = await emulator.getUtxo(makeTxOutputId(txId, 0));
-        ordersTxInputs.push(orderTxInput);
-      }
+      ordersTxInputs.splice(1, 1);
     }
   );
 
-  // mint many assets - <15 assets>
+  // mint 2 new assets - <hal-9, hal-10>
   myTest(
-    "mint many assets - <15 assets>",
+    "mint 2 new assets - <hal-9, hal-10>",
     async ({
       mockedFunctions,
       db,
@@ -668,25 +647,34 @@ describe.sequential("Koralab H.A.L Tests", () => {
         "Orders tx inputs is not an array"
       );
 
-      const { usersWallets, allowedMinterWallet, paymentWallet } = wallets;
-      const user1Wallet = usersWallets[0];
+      const {
+        usersWallets,
+        allowedMinterWallet,
+        paymentWallet,
+        orderNftsCollectorWallet,
+      } = wallets;
+      const user2Wallet = usersWallets[1];
 
-      const orders: Order[] = ordersTxInputs.map((orderTxInput, i) => ({
+      const assetNamesList = [["hal-9", "hal-10"]];
+      const orders: Order[] = ordersTxInputs.map((orderTxInput, index) => ({
         orderTxInput,
-        assetUtf8Name: `hal-${i + 101}`,
-        assetDatum: makeHalAssetDatum(`hal-${i + 101}`),
+        assetsInfo: assetNamesList[index].map((assetName) => [
+          assetName,
+          makeHalAssetDatum(assetName),
+        ]),
       }));
 
-      const txBuilderResult = await mint({
+      const txBuilderResult = await prepareMintTransaction({
         network,
         address: allowedMinterWallet.address,
+        orderNftsCollector: orderNftsCollectorWallet.address,
         orders,
         db,
         deployedScripts,
       });
       invariant(txBuilderResult.ok, "Mint Tx Building Failed");
 
-      const txBuilder = txBuilderResult.data;
+      const { txBuilder } = txBuilderResult.data;
       txBuilder.addCollateral((await allowedMinterWallet.utxos)[0]);
       const txResult = await mayFailTransaction(
         txBuilder,
@@ -706,26 +694,186 @@ describe.sequential("Koralab H.A.L Tests", () => {
       invariant(settingsResult.ok, "Settings Fetch Failed");
       const { settingsV1 } = settingsResult.data;
       const { ref_spend_script_address } = settingsV1;
-      const user1Balance = await balanceOfWallet(user1Wallet);
+      const user2Balance = await balanceOfWallet(user2Wallet);
       const refSpendBalance = await balanceOfAddress(
         emulator,
         ref_spend_script_address
       );
 
-      orders.map((order) => {
+      for (const assetName of assetNamesList[0]) {
         assert(
-          user1Balance.isGreaterOrEqual(
-            userAssetValue(settingsV1.policy_id, order.assetUtf8Name)
+          user2Balance.isGreaterOrEqual(
+            userAssetValue(settingsV1.policy_id, assetName)
           ) == true,
           "User 1 Wallet Balance is not correct"
         );
         assert(
           refSpendBalance.isGreaterOrEqual(
-            referenceAssetValue(settingsV1.policy_id, order.assetUtf8Name)
+            referenceAssetValue(settingsV1.policy_id, assetName)
           ) == true,
           "Ref Spend Wallet Balance is not correct"
         );
+      }
+
+      // update minting data input
+      const mintingDataAssetTxInput = await emulator.getUtxo(
+        makeTxOutputId(txId, 0)
+      );
+      const mintingData = decodeMintingDataDatum(mintingDataAssetTxInput.datum);
+      mockedFunctions.mockedFetchMintingData.mockReturnValue(
+        new Promise((resolve) =>
+          resolve(
+            Ok({
+              mintingData,
+              mintingDataAssetTxInput,
+            })
+          )
+        )
+      );
+
+      // empty orders detail
+      ordersTxInputs.length = 0;
+
+      // inspect db
+      inspect(db);
+    }
+  );
+
+  // user_3 orders 5 new assets 2 times
+  myTest(
+    "user_3 orders 5 new assets 2 times",
+    async ({ network, emulator, wallets, ordersTxInputs, deployedScripts }) => {
+      invariant(
+        Array.isArray(ordersTxInputs),
+        "Orders tx inputs is not an array"
+      );
+
+      const { usersWallets, ordersMinterWallet } = wallets;
+      const user3Wallet = usersWallets[2];
+
+      for (let i = 0; i < 2; i++) {
+        const txBuilderResult = await request({
+          network,
+          address: user3Wallet.address,
+          amount: 5,
+          deployedScripts,
+        });
+        invariant(txBuilderResult.ok, "Order Tx Building failed");
+
+        const txBuilder = txBuilderResult.data;
+        const txResult = await mayFailTransaction(
+          txBuilder,
+          user3Wallet.address,
+          await user3Wallet.utxos
+        ).complete();
+        invariant(txResult.ok, "Order Tx Complete failed");
+        logMemAndCpu(txResult);
+
+        const { tx } = txResult.data;
+        tx.addSignatures([
+          ...(await user3Wallet.signTx(tx)),
+          ...(await ordersMinterWallet.signTx(tx)),
+        ]);
+        const txId = await user3Wallet.submitTx(tx);
+        emulator.tick(200);
+
+        const orderTxInput = await emulator.getUtxo(makeTxOutputId(txId, 0));
+        ordersTxInputs.push(orderTxInput);
+      }
+    }
+  );
+
+  // mint 10 new assets - <hal-101 ~ hal-110>
+  myTest(
+    "mint 10 new assets - <hal-101 ~ hal-110>",
+    async ({
+      mockedFunctions,
+      db,
+      network,
+      emulator,
+      wallets,
+      ordersTxInputs,
+      deployedScripts,
+    }) => {
+      invariant(
+        Array.isArray(ordersTxInputs),
+        "Orders tx inputs is not an array"
+      );
+
+      const {
+        usersWallets,
+        allowedMinterWallet,
+        paymentWallet,
+        orderNftsCollectorWallet,
+      } = wallets;
+      const user3Wallet = usersWallets[2];
+
+      const assetNamesList = Array.from({ length: 2 }, (_, outerIndex) =>
+        Array.from(
+          { length: 5 },
+          (_, index) => `hal-${101 + outerIndex * 5 + index}`
+        )
+      );
+      const orders: Order[] = ordersTxInputs.map((orderTxInput, index) => ({
+        orderTxInput,
+        assetsInfo: assetNamesList[index].map((assetName) => [
+          assetName,
+          makeHalAssetDatum(assetName),
+        ]),
+      }));
+
+      const txBuilderResult = await prepareMintTransaction({
+        network,
+        address: allowedMinterWallet.address,
+        orderNftsCollector: orderNftsCollectorWallet.address,
+        orders,
+        db,
+        deployedScripts,
       });
+      invariant(txBuilderResult.ok, "Mint Tx Building Failed");
+
+      const { txBuilder } = txBuilderResult.data;
+      txBuilder.addCollateral((await allowedMinterWallet.utxos)[0]);
+      const txResult = await mayFailTransaction(
+        txBuilder,
+        paymentWallet.address,
+        []
+      ).complete();
+      invariant(txResult.ok, "Mint Tx Complete Failed");
+      logMemAndCpu(txResult);
+
+      const { tx } = txResult.data;
+      tx.addSignatures(await allowedMinterWallet.signTx(tx));
+      const txId = await allowedMinterWallet.submitTx(tx);
+      emulator.tick(200);
+
+      // check minted values
+      const settingsResult = await fetchSettings(network);
+      invariant(settingsResult.ok, "Settings Fetch Failed");
+      const { settingsV1 } = settingsResult.data;
+      const { ref_spend_script_address } = settingsV1;
+      const user3Balance = await balanceOfWallet(user3Wallet);
+      const refSpendBalance = await balanceOfAddress(
+        emulator,
+        ref_spend_script_address
+      );
+
+      for (const assetNames of assetNamesList) {
+        for (const assetName of assetNames) {
+          assert(
+            user3Balance.isGreaterOrEqual(
+              userAssetValue(settingsV1.policy_id, assetName)
+            ) == true,
+            "User 3 Wallet Balance is not correct"
+          );
+          assert(
+            refSpendBalance.isGreaterOrEqual(
+              referenceAssetValue(settingsV1.policy_id, assetName)
+            ) == true,
+            "Ref Spend Wallet Balance is not correct"
+          );
+        }
+      }
 
       // update minting data input
       const mintingDataAssetTxInput = await emulator.getUtxo(

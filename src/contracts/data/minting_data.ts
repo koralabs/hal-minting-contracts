@@ -9,7 +9,7 @@ import {
 } from "@helios-lang/uplc";
 
 import { invariant } from "../../helpers/index.js";
-import { MintingData, Proof } from "../types/index.js";
+import { Fulfilment, MintingData } from "../types/index.js";
 import { buildMPTProofData } from "./mpt.js";
 
 const buildMintingData = (mintingData: MintingData): UplcData => {
@@ -34,16 +34,21 @@ const decodeMintingDataDatum = (
   return { mpt_root_hash };
 };
 
-const buildProofData = (proof: Proof): UplcData => {
-  const { mpt_proof, asset_name } = proof;
-  return makeConstrData(0, [
-    buildMPTProofData(mpt_proof),
-    makeByteArrayData(asset_name),
-  ]);
+const buildFulfilmentData = (fulfilment: Fulfilment): UplcData => {
+  return makeListData(
+    fulfilment.map(([asset_name, mpt_proof]) =>
+      makeListData([
+        makeByteArrayData(asset_name),
+        buildMPTProofData(mpt_proof),
+      ])
+    )
+  );
 };
 
-const buildMintingDataMintRedeemer = (proofs: Proof[]): UplcData => {
-  return makeConstrData(0, [makeListData(proofs.map(buildProofData))]);
+const buildMintingDataMintRedeemer = (fulfilments: Fulfilment[]): UplcData => {
+  return makeConstrData(0, [
+    makeListData(fulfilments.map(buildFulfilmentData)),
+  ]);
 };
 
 const buildMintingDataUpdateMPTRedeemer = (): UplcData => {

@@ -28,4 +28,7 @@ export const ORDERS_MINTER =
 export const REF_SPEND_ADMIN =
   "976ec349c3a14f58959088e13e98f6cd5a1e8f27f6f3160b25e415ca";
 
+// max_order_amount
+export const MAX_ORDER_AMOUNT = 5;
+
 // ------- End Settings Data -------

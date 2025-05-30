@@ -132,13 +132,13 @@ Anything (But that is actually `MintingData` type, we use `Data` type just for c
 
 #### 3.3.3 Redeemer
 
-- `Mint(List<Proofs>)`
+- `Mint(List<Fulfilments>)`
 
 - `UpdateMPT`
 
 #### 3.3.4 Validation
 
-- `Mint(List<Proofs>)`: called when minting engine tries to mint H.A.L. NFTs.
+- `Mint(List<Fulfilments>)`: called when minting engine tries to mint H.A.L. NFTs.
 
   - must attach `Settings` NFT in reference inputs.
 
@@ -152,7 +152,7 @@ Anything (But that is actually `MintingData` type, we use `Data` type just for c
 
     - minting_data_output: Output with updated `MPF` `root_hash`.
 
-      - must have correct datum with updated `MPF` `root_hash` which can be calculated using `Proofs` in redeemer. (`Proof` contains `mpt_proof` which is including proof of `asset_name` and `asset_name` of H.A.L. NFT to mint)
+      - must have correct datum with updated `MPF` `root_hash` which can be calculated using `mpt_proof` from `Fulfilments` in redeemer.
 
         - value of key `asset_name` must be empty string `""`.
 
@@ -160,13 +160,11 @@ Anything (But that is actually `MintingData` type, we use `Data` type just for c
 
       - must have same value as spending UTxO. (which is `minting_data_input`)
 
-      > `Proofs` in redeemer must be in same order as `Order UTxOs` in transaction inputs
+      > `Fulfilments` in redeemer must be in `REVERSE` order as `Order UTxOs` in transaction inputs
 
-    - payment_output: Output for H.A.L. NFTs minting cost.
+    - order_nfts_output: Output with collected `Order NFTs` (which will be burnt later)
 
-      - must have more or equal lovelace to H.A.L. NFTs minting cost which is sum of `price` from `OrderDatum` of all `Order UTxOs` substracted by min lovelace used for `reference_output` and `user_output` and transaction fee.
-
-        > Order UTxO must pay everything.
+      - must have `Order NFTs` of `amount` same as Order UTxOs amount
 
     - rest_outputs: List of Pair of (`reference output`, `user_output`).
 
@@ -180,9 +178,15 @@ Anything (But that is actually `MintingData` type, we use `Data` type just for c
 
       - `user_output` must have user H.A.L. asset with `asset_name`. (222 asset name label)
 
-      > The pairs must be in same order as `Order UTxOs` in transaction inputs and `Proofs` in redeemer.
+      > The pairs must be in `REVERSE` order as `Order UTxOs` in transaction inputs. (Same order as `Fulfilments`)
 
-    - assure that Pair of H.A.L. `reference_asset` and `user_asset` for `Proofs` are minted
+    - payment_output: Last output must be payment output for H.A.L. NFTs minting cost.
+
+      - must have more or equal lovelace to H.A.L. NFTs minting cost which is sum of `price` multiplied by `amount` (from `OrderDatum`) of all `Order UTxOs` substracted by min lovelace used for `reference_output` and `user_output` and transaction fee.
+
+        > Order UTxO must pay everything.
+
+    - assure that Pair of H.A.L. `reference_asset` and `user_asset` for `Fulfilments` are minted
 
     - assure that Order NFTs are burnt (same amount as H.A.L. NFTs. `Ref` and `User` NFTs correspond one Order NFT.)
 
@@ -214,17 +218,21 @@ None (minting policy)
 
 #### 3.4.4 Validation
 
-- `MintOrders(List<Address>)`: called when a user tries to request orders to mint H.A.L. NFTs
+- `MintOrders(destination_address: Address, amount: Int)`: called when a user tries to request order to mint H.A.L. NFTs
 
   - must attach `Settings` NFT in reference inputs.
+
+  - `own_minting_policy` (policy id of itself) must be same as `orders_mint_policy_id` from `Settings`
 
   - must be signed by `orders_minter` from `Settings`
 
     - This will guarantee that white-listed users can mint early and others have to wait till minting opens to every body.
 
-  - `own_minting_policy` (policy id of itself) must be same as `orders_mint_policy_id` from `Settings`
+  - `amount` must be positive.
 
-  - assume that transaction outputs have order outputs (`Order UTxOs`) in same order as `destination_addresses`. (`List<Address>` in redeemer)
+  - `amount` must not exceed `max_order_amount` from `Settings`.
+
+  - must have valid order output. We assume this output is first output in the transaction outputs.
 
     - Order output address must be `orders_spend_script_address` from `Settings`.
 
@@ -234,21 +242,23 @@ None (minting policy)
 
       - `destination_address` must be same as `destination_address` from Redeemer.
 
+      - `amount` must be same as `amount` from Redeemer.
+
     - must have only one `Order NFT`. (which is minted in the same transaction)
 
-    - must have enough lovelace. (bigger than or equal to `price`)
+    - must have enough lovelace. (bigger than or equal to `price * amount`)
 
     - must NOT have `reference_script`.
 
-  - Only `Order NFTs` for redeemer are minted.
+  - Only one `Order NFT` is minted.
 
-- `ExecuteOrders`: called when minting engine tries to mint H.A.L. NFTs. (also calling `mint_proxy`, `mint_v1`, `minting_data`, `orders_spend` validators)
+- `BurnOrders`: called when burn Order NFTs (when a user cancels his Order, when burn empty Order NFTs)
 
-  - at least one of H.A.L. NFTs (`hal_nft_policy_id` from Parameter) are minted. Because other contracts (`minting_data`) will do validations.
+  - Must only burn Order NFTs
 
-- `CancelOrder`: called when a user tries to cancel his order and retrieve his lovelace.
+    - `asset_name` must be `HAL_ORDER`.
 
-  - must burn only one `Order NFT`. `orders_spend` validator do additional checks (in `CancelOrder` redeemer)
+    - `quantity` must be negative.
 
 ### 3.5 `orders_spend` spending validator
 

@@ -7,6 +7,8 @@ interface OrderDatum {
   price: bigint;
   // address that the asset should be sent to
   destination_address: ShelleyAddress;
+  // amount of HAL NFTs to mint
+  amount: number;
 }
 
 export type { OrderDatum };

@@ -10,7 +10,6 @@ import {
   makeMintingDataUplcProgramParameterDatum,
   makeMintProxyUplcProgramParameterDatum,
   makeMintV1UplcProgramParameterDatum,
-  makeOrdersMintUplcProgramParameterDatum,
   makeOrdersSpendUplcProgramParameterDatum,
 } from "../contracts/index.js";
 import { convertError, invariant } from "../helpers/index.js";
@@ -107,11 +106,6 @@ const deploy = async (params: DeployParams): Promise<DeployData> => {
       return {
         ...extractScriptCborsFromUplcProgram(
           ordersMintConfig.ordersMintUplcProgram
-        ),
-        datumCbor: bytesToHex(
-          makeOrdersMintUplcProgramParameterDatum(
-            halPolicyHash.toHex()
-          ).data.toCbor()
         ),
         validatorHash: ordersMintConfig.ordersMintValidatorHash.toHex(),
         policyId: ordersMintConfig.ordersMintPolicyHash.toHex(),

@@ -137,6 +137,10 @@ const setup = async () => {
   const paymentWallet = emulator.createWallet(ACCOUNT_LOVELACE);
   emulator.tick(200);
 
+  // order nfts collector
+  const orderNftsCollectorWallet = emulator.createWallet(0n);
+  emulator.tick(200);
+
   // users wallet
   const usersWallets: SimpleWallet[] = [];
   for (let i = 0; i < 5; i++) {
@@ -179,6 +183,7 @@ const setup = async () => {
       mintingDataConfig.mintingDataValidatorHash.toHex(),
     orders_minter: ordersMinterPubKeyHash,
     ref_spend_admin: refSpendAdminWallet.spendingPubKeyHash.toHex(),
+    max_order_amount: 5,
   };
   const settings: Settings = {
     mint_governor: mintV1Config.mintV1ValidatorHash.toHex(),
@@ -389,6 +394,7 @@ const setup = async () => {
       ordersMinterWallet,
       refSpendAdminWallet,
       paymentWallet,
+      orderNftsCollectorWallet,
       usersWallets,
     },
     ordersTxInputs,

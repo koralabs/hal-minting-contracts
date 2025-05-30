@@ -1,11 +1,11 @@
 use aiken/transaction.{ScriptContext, Spend}
 use common/hashes.{VerificationKeyHash}
-use validations/minting_data/types.{Proof}
+use validations/minting_data/types.{Fulfilment}
 use validations/minting_data/validation.{can_mint, can_update_mpt}
 
 pub type MintingDataRedeemer {
   // mint hal nfts
-  Mint(List<Proof>)
+  Mint(List<Fulfilment>)
   // update MPT root has
   UpdateMPT
 }
@@ -36,7 +36,8 @@ validator(admin_verification_key_hash: VerificationKeyHash) {
     expect Spend(spending_output_reference) = purpose
 
     when redeemer is {
-      Mint(proofs) -> can_mint(transaction, spending_output_reference, proofs)
+      Mint(fulfilments) ->
+        can_mint(transaction, spending_output_reference, fulfilments)
       UpdateMPT -> can_update_mpt(transaction, admin_verification_key_hash)
     }
   }

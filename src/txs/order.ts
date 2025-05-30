@@ -20,8 +20,8 @@ import { fetchSettings } from "../configs/index.js";
 import { HAL_NFT_PRICE, ORDER_ASSET_HEX_NAME } from "../constants/index.js";
 import {
   buildOrderData,
-  buildOrdersMintCancelOrderRedeemer,
-  buildOrdersMintMintOrdersRedeemer,
+  buildOrdersMintBurnOrdersRedeemer,
+  buildOrdersMintMintOrderRedeemer,
   buildOrdersSpendCancelOrderRedeemer,
   decodeOrderDatum,
   OrderDatum,
@@ -39,11 +39,13 @@ import { DeployedScripts } from "./deploy.js";
  * @typedef {object} RequestParams
  * @property {NetworkName} network Network
  * @property {Address} address User's Wallet Address to perform order
+ * @property {number} amount Amount of H.A.L. NFTs to order
  * @property {DeployedScripts} deployedScripts Deployed Scripts
  */
 interface RequestParams {
   network: NetworkName;
   address: Address;
+  amount: number;
   deployedScripts: DeployedScripts;
 }
 
@@ -55,12 +57,16 @@ interface RequestParams {
 const request = async (
   params: RequestParams
 ): Promise<Result<TxBuilder, Error>> => {
-  const { network, address, deployedScripts } = params;
+  const { network, address, amount, deployedScripts } = params;
   const isMainnet = network == "mainnet";
   if (address.era == "Byron")
     return Err(new Error("Byron Address not supported"));
   if (address.spendingCredential.kind == "ValidatorHash")
     return Err(new Error("Must be Base address"));
+
+  if (amount <= 0n) {
+    return Err(new Error("Amount must be greater than 0"));
+  }
 
   const {
     ordersMintScriptTxInput,
@@ -73,7 +79,16 @@ const request = async (
   if (!settingsResult.ok)
     return Err(new Error(`Failed to fetch settings: ${settingsResult.error}`));
   const { settingsAssetTxInput, settingsV1 } = settingsResult.data;
-  const { orders_minter } = settingsV1;
+  const { orders_minter, max_order_amount } = settingsV1;
+
+  // check amount is not greater than max_order_amount
+  if (amount > max_order_amount) {
+    return Err(
+      new Error(
+        `Amount must be less than or equal to ${max_order_amount} (max_order_amount)`
+      )
+    );
+  }
 
   // orders spend script address
   const ordersSpendScriptAddress = makeAddress(
@@ -90,6 +105,7 @@ const request = async (
     owner_key_hash: address.spendingCredential.toHex(),
     price: HAL_NFT_PRICE,
     destination_address: address,
+    amount,
   };
 
   // order value
@@ -101,7 +117,7 @@ const request = async (
     [orderTokenAssetClass.tokenName, 1n],
   ];
   const orderValue = makeValue(
-    HAL_NFT_PRICE,
+    HAL_NFT_PRICE * BigInt(amount),
     makeAssets([[orderTokenAssetClass, 1n]])
   );
 
@@ -123,7 +139,7 @@ const request = async (
   txBuilder.mintPolicyTokensUnsafe(
     ordersMintPolicyHash,
     orderTokenValue,
-    buildOrdersMintMintOrdersRedeemer([address])
+    buildOrdersMintMintOrderRedeemer(address, amount)
   );
 
   // <-- pay order value to order spend script adress
@@ -213,7 +229,7 @@ const cancel = async (
   txBuilder.mintPolicyTokensUnsafe(
     ordersMintPolicyHash,
     orderTokenValue,
-    buildOrdersMintCancelOrderRedeemer()
+    buildOrdersMintBurnOrdersRedeemer()
   );
 
   // <-- add signer
@@ -275,11 +291,13 @@ const fetchOrdersTxInputs = async (
  * @property {NetworkName} network Network
  * @property {TxInput} orderTxInput Order TxInput
  * @property {Address} ordersSpendScriptAddress Orders Spend Script Address
+ * @property {number} maxOrderAmount max_order_amount from Settings
  */
 interface IsValidOrderTxInputParams {
   network: NetworkName;
   orderTxInput: TxInput;
   ordersSpendScriptDetails: ScriptDetails;
+  maxOrderAmount: number;
 }
 
 /**
@@ -290,7 +308,8 @@ interface IsValidOrderTxInputParams {
 const isValidOrderTxInput = (
   params: IsValidOrderTxInputParams
 ): Result<true, Error> => {
-  const { network, orderTxInput, ordersSpendScriptDetails } = params;
+  const { network, orderTxInput, ordersSpendScriptDetails, maxOrderAmount } =
+    params;
   const isMainnet = network == "mainnet";
   const ordersSpendScriptAddress = makeAddress(
     isMainnet,
@@ -311,9 +330,20 @@ const isValidOrderTxInput = (
   if (!decodedResult.ok) {
     return Err(new Error("Invalid Order Datum"));
   }
+  const { amount } = decodedResult.data;
+
+  // check amount
+  if (amount > maxOrderAmount) {
+    return Err(
+      new Error(
+        `Amount must be less than or equal to ${maxOrderAmount} (max_order_amount)`
+      )
+    );
+  }
 
   // check lovelace is enough
-  if (orderTxInput.value.lovelace < HAL_NFT_PRICE) {
+  const expectedLovelace = BigInt(amount) * HAL_NFT_PRICE;
+  if (orderTxInput.value.lovelace < expectedLovelace) {
     return Err(new Error("Insufficient Lovelace"));
   }
 

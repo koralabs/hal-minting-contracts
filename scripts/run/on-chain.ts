@@ -135,6 +135,7 @@ const buildSettingsDataCbor = () => {
     PAYMENT_ADDRESS,
     ORDERS_MINTER,
     REF_SPEND_ADMIN,
+    MAX_ORDER_AMOUNT,
   } = configs;
 
   const contractsConfig = buildContracts({
@@ -164,6 +165,7 @@ const buildSettingsDataCbor = () => {
       mintingDataConfig.mintingDataValidatorHash.toHex(),
     orders_minter: ORDERS_MINTER,
     ref_spend_admin: REF_SPEND_ADMIN,
+    max_order_amount: MAX_ORDER_AMOUNT,
   };
   const settings: Settings = {
     mint_governor: mintV1Config.mintV1ValidatorHash.toHex(),
