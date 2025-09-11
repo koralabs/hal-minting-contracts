@@ -11,9 +11,8 @@ import {
 import { makeTxBuilder, TxBuilder } from "@helios-lang/tx-utils";
 import { Err, Ok, Result } from "ts-res";
 
-import { PREFIX_100, PREFIX_222 } from "../constants/index.js";
+import { PREFIX_100 } from "../constants/index.js";
 import {
-  buildRefSpendRedeemer,
   decodeRefSpendSettingsDatum,
   decodeRefSpendSettingsV1Data,
   makeVoidData,
@@ -25,7 +24,6 @@ interface UpdateParams {
   isMainnet: boolean;
   assetUtf8Name: string;
   refTxInput: TxInput;
-  userTxInput: TxInput;
   newDatum: InlineTxOutputDatum;
   deployedScripts: DeployedScripts;
   refSpendSettingsAssetTxInput: TxInput;
@@ -43,7 +41,6 @@ const update = async (
     isMainnet,
     assetUtf8Name,
     refTxInput,
-    userTxInput,
     newDatum,
     deployedScripts,
     refSpendSettingsAssetTxInput,
@@ -83,23 +80,10 @@ const update = async (
   const refAssetClass = makeAssetClass(`${policy_id}.${refAssetName}`);
   const refAsset = makeAssets([[refAssetClass, 1n]]);
 
-  // user asset value
-  const userAssetName = `${PREFIX_222}${assetHexName}`;
-  const userAssetClass = makeAssetClass(`${policy_id}.${userAssetName}`);
-  const userAsset = makeAssets([[userAssetClass, 1n]]);
-
   // check refTxInput has ref asset
   if (!refTxInput.value.isGreaterOrEqual(makeValue(0n, refAsset))) {
     return Err(new Error("Reference asset not found."));
   }
-
-  // check userTxInput has user asset
-  if (!userTxInput.value.isGreaterOrEqual(makeValue(0n, userAsset))) {
-    return Err(new Error("User asset not found."));
-  }
-
-  // make redeemer
-  const refSpendRedeemer = buildRefSpendRedeemer(assetHexName);
 
   // start building tx
   const txBuilder = makeTxBuilder({
@@ -119,7 +103,7 @@ const update = async (
       makeStakingValidatorHash(refSpendScriptDetails.validatorHash)
     ),
     0n,
-    refSpendRedeemer
+    makeVoidData()
   );
 
   // <-- add ref_spend_admin signer
@@ -127,9 +111,6 @@ const update = async (
 
   // <-- spend refTxInput
   txBuilder.spendUnsafe(refTxInput, makeVoidData());
-
-  // <-- spend userTxInput
-  txBuilder.spendUnsafe(userTxInput);
 
   // <-- pay ref asset with updated datum
   txBuilder.payUnsafe(refTxInput.address, makeValue(0n, refAsset), newDatum);

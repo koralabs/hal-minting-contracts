@@ -8,7 +8,7 @@ import {
 import { Ok } from "ts-res";
 import { assert, describe } from "vitest";
 
-import { PREFIX_100, PREFIX_222 } from "../src/constants/index.js";
+import { PREFIX_100 } from "../src/constants/index.js";
 import {
   buildOrdersSpendCancelOrderRedeemer,
   buildOrdersSpendRefundOrderRedeemer,
@@ -541,8 +541,7 @@ describe.sequential("Koralab H.A.L Tests", () => {
   myTest(
     "user_1 can update <hal-1> datum",
     async ({ isMainnet, emulator, wallets, deployedScripts }) => {
-      const { usersWallets, refSpendAdminWallet } = wallets;
-      const user1Wallet = usersWallets[0];
+      const { refSpendAdminWallet } = wallets;
 
       const settingsResult = await fetchSettings(isMainnet);
       invariant(settingsResult.ok, "Settings Fetch Failed");
@@ -562,21 +561,12 @@ describe.sequential("Koralab H.A.L Tests", () => {
       const assetUtf8Name = "hal-1";
       const assetHexName = Buffer.from(assetUtf8Name).toString("hex");
       const refAssetName = `${PREFIX_100}${assetHexName}`;
-      const userAssetName = `${PREFIX_222}${assetHexName}`;
       const foundRefUtxo = refUtxos.find((utxo) =>
         utxo.value.assets.hasAssetClass(
           makeAssetClass(`${policy_id}.${refAssetName}`)
         )
       );
       invariant(foundRefUtxo, "Reference Utxo Not Found");
-      const userUtxos = await user1Wallet.utxos;
-      const foundUserUtxo = userUtxos.find((utxo) =>
-        utxo.value.assets.hasAssetClass(
-          makeAssetClass(`${policy_id}.${userAssetName}`)
-        )
-      );
-      invariant(foundUserUtxo, "User Utxo Not Found");
-
       const newDatum = makeHalAssetDatum("hal-1-updated");
 
       const txBuilderResult = await update({
@@ -584,27 +574,27 @@ describe.sequential("Koralab H.A.L Tests", () => {
         assetUtf8Name: "hal-1",
         newDatum,
         refTxInput: foundRefUtxo,
-        userTxInput: foundUserUtxo,
         deployedScripts,
         refSpendSettingsAssetTxInput,
       });
       invariant(txBuilderResult.ok, "Update Tx Building failed");
 
+      const refSpendAdminUtxos = await emulator.getUtxos(
+        refSpendAdminWallet.address
+      );
       const txBuilder = txBuilderResult.data;
       const txResult = await mayFailTransaction(
         txBuilder,
-        user1Wallet.address,
-        userUtxos
+        refSpendAdminWallet.address,
+        refSpendAdminUtxos
       ).complete();
+      console.log(txResult);
       invariant(txResult.ok, "Update Tx Complete failed");
       logMemAndCpu(txResult);
 
       const { tx } = txResult.data;
-      tx.addSignatures([
-        ...(await refSpendAdminWallet.signTx(tx)),
-        ...(await user1Wallet.signTx(tx)),
-      ]);
-      const txId = await user1Wallet.submitTx(tx);
+      tx.addSignatures(await refSpendAdminWallet.signTx(tx));
+      const txId = await refSpendAdminWallet.submitTx(tx);
       emulator.tick(200);
 
       const updatedUtxo = await emulator.getUtxo(makeTxOutputId(txId, 0));

@@ -4,7 +4,6 @@ export * from "./mint.js";
 export * from "./minting_data.js";
 export * from "./mpt.js";
 export * from "./orders.js";
-export * from "./ref_spend.js";
 export * from "./royalty.js";
 export * from "./royalty_spend.js";
 export * from "./settings.js";

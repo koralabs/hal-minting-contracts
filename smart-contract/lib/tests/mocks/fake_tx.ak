@@ -3,8 +3,8 @@ use aiken/bytearray
 use aiken/dict
 use aiken/list
 use aiken/transaction.{
-  Datum, InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
-  TransactionId, ValidityRange,
+  Datum, InlineDatum, Input, Output, OutputReference, Transaction, TransactionId,
+  ValidityRange,
 }
 use aiken/transaction/credential.{
   Address, Inline, ScriptCredential, StakeCredential, VerificationKeyCredential,
@@ -62,58 +62,6 @@ pub fn make_order_input(
       reference_script: None,
     },
   }
-}
-
-pub fn make_ref_spend_proxy_input(
-  asset_name: AssetName,
-  tx_hash: ByteArray,
-) -> Input {
-  let datum: Datum = make_cip68_datum(asset_name)
-  let ref_asset_name = bytearray.concat(prefix_100, asset_name)
-
-  Input {
-    output_reference: OutputReference {
-      transaction_id: TransactionId { hash: tx_hash },
-      output_index: 0,
-    },
-    output: Output {
-      address: credential.from_script(ref_spend_proxy_script_hash),
-      value: value.zero()
-        |> value.add(hal_policy_id, ref_asset_name, 1),
-      datum,
-      reference_script: None,
-    },
-  }
-}
-
-pub fn make_ref_spend_proxy_user_input_and_output(
-  user_1_address: Address,
-  asset_name: AssetName,
-) -> (Input, Output) {
-  let user_asset_name = bytearray.concat(prefix_222, asset_name)
-
-  (
-    Input {
-      output_reference: OutputReference {
-        transaction_id: TransactionId { hash: #"0000" },
-        output_index: 0,
-      },
-      output: Output {
-        address: user_1_address,
-        value: value.zero()
-          |> value.add(hal_policy_id, user_asset_name, 1),
-        datum: NoDatum,
-        reference_script: None,
-      },
-    },
-    Output {
-      address: user_1_address,
-      value: value.zero()
-        |> value.add(hal_policy_id, user_asset_name, 1),
-      datum: NoDatum,
-      reference_script: None,
-    },
-  )
 }
 
 pub fn make_user_output(

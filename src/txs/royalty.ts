@@ -19,8 +19,6 @@ import { ROYALTY_ASSET_FULL_NAME } from "../constants/index.js";
 import {
   buildMintMintRoyaltyNFTRedeemer,
   buildRoyaltyDatumData,
-  buildRoyaltyMigrateRedeemer,
-  buildRoyaltyUpdateRedeemer,
   decodeSettingsDatum,
   decodeSettingsV1Data,
   makeVoidData,
@@ -196,8 +194,6 @@ const updateRoyalty = async (
     return Err(new Error("Royalty Token not found in RoyaltyTxInput"));
   }
 
-  const updateRedeemer = buildRoyaltyUpdateRedeemer();
-
   // start building tx
   const txBuilder = makeTxBuilder({
     isMainnet,
@@ -213,7 +209,7 @@ const updateRoyalty = async (
   txBuilder.addSigners(makePubKeyHash(royaltySpendAdmin));
 
   // <-- spend Royalty Token
-  txBuilder.spendUnsafe(royaltyTxInput, updateRedeemer);
+  txBuilder.spendUnsafe(royaltyTxInput, makeVoidData());
 
   // <-- send Royalty Token with updated Royalty Datum
   txBuilder.payUnsafe(
@@ -225,85 +221,5 @@ const updateRoyalty = async (
   return Ok(txBuilder);
 };
 
-interface MigrateRoyaltyParams {
-  isMainnet: boolean;
-  royaltyTxInput: TxInput;
-  deployedScripts: DeployedScripts;
-  settingsAssetTxInput: TxInput;
-}
-
-/**
- * @description Mint Royalty token
- * @param {RequestParams} params
- * @returns {Promise<Result<TxBuilder,  Error>>} Transaction Result
- */
-const migrateRoyalty = async (
-  params: MigrateRoyaltyParams
-): Promise<Result<TxBuilder, Error>> => {
-  const { isMainnet, royaltyTxInput, deployedScripts, settingsAssetTxInput } =
-    params;
-
-  const { royaltySpendScriptTxInput } = deployedScripts;
-
-  // decode settings
-  const settingsResult = mayFail(() =>
-    decodeSettingsDatum(settingsAssetTxInput.datum)
-  );
-  if (!settingsResult.ok) {
-    return Err(new Error(`Failed to decode settings: ${settingsResult.error}`));
-  }
-  const { data: settingsV1Data } = settingsResult.data;
-  const settingsV1Result = mayFail(() =>
-    decodeSettingsV1Data(settingsV1Data, isMainnet)
-  );
-  if (!settingsV1Result.ok) {
-    return Err(
-      new Error(`Failed to decode settings v1: ${settingsV1Result.error}`)
-    );
-  }
-  const { policy_id, royalty_spend_script_hash } = settingsV1Result.data;
-  const royaltySpendScriptAddress = makeAddress(
-    isMainnet,
-    makeValidatorHash(royalty_spend_script_hash)
-  );
-
-  const royaltyAssetClass = makeAssetClass(
-    `${policy_id}.${ROYALTY_ASSET_FULL_NAME}`
-  );
-  const royaltyNFTValue = makeValue(1n, makeAssets([[royaltyAssetClass, 1n]]));
-
-  // check RoyaltyTxInput has Royalty Token
-  const hasRoyaltyToken =
-    royaltyTxInput.value.assets.hasAssetClass(royaltyAssetClass);
-  if (!hasRoyaltyToken) {
-    return Err(new Error("Royalty Token not found in RoyaltyTxInput"));
-  }
-
-  const migrateRedeemer = buildRoyaltyMigrateRedeemer();
-
-  // start building tx
-  const txBuilder = makeTxBuilder({
-    isMainnet,
-  });
-
-  // <-- attach settings asset as reference input
-  txBuilder.refer(settingsAssetTxInput);
-
-  // <-- attach deployed scripts
-  txBuilder.refer(royaltySpendScriptTxInput);
-
-  // <-- spend Royalty Token
-  txBuilder.spendUnsafe(royaltyTxInput, migrateRedeemer);
-
-  // <-- send Royalty Token with same Royalty Datum
-  txBuilder.payUnsafe(
-    royaltySpendScriptAddress,
-    royaltyNFTValue,
-    royaltyTxInput.datum
-  );
-
-  return Ok(txBuilder);
-};
-
-export type { MigrateRoyaltyParams, MintRoyaltyParams, UpdateRoyaltyParams };
-export { migrateRoyalty, mintRoyalty, updateRoyalty };
+export type { MintRoyaltyParams, UpdateRoyaltyParams };
+export { mintRoyalty, updateRoyalty };

@@ -55,19 +55,9 @@ const convertOnChainPercentageToPercentage = (
   return 1000 / Number(onChainPercentage);
 };
 
-const buildRoyaltyUpdateRedeemer = (): UplcData => {
-  return makeConstrData(0, []);
-};
-
-const buildRoyaltyMigrateRedeemer = (): UplcData => {
-  return makeConstrData(1, []);
-};
-
 export {
   buildRoyaltyDatumData,
-  buildRoyaltyMigrateRedeemer,
   buildRoyaltyRecipientData,
-  buildRoyaltyUpdateRedeemer,
   convertOnChainPercentageToPercentage,
   convertPercentageToOnChainPercentage,
 };
