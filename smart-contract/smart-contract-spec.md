@@ -38,6 +38,12 @@
 
   - Asset Name: `"hal@handle_settings"` (Defined in `hal_nft_mint/settings.ak`)
 
+- Ref Settings NFT: This is `Ref Spend Settings` NFT. The settings related to `ref_spend_proxy` and `ref_spend` validator, which is saved in the form of datum attached to this token in `Kora Lab Admin`'s wallet.
+
+  - Policy Id: `"f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a"` Legacy Ada Handle's policy id (Defined in `ref_spend/settings.ak`)
+
+  - Asset Name: `"hal_pz@handle_settings"` (Defined in `ref_spend/settings.ak`)
+
 - Minting Data NFT: This is NFT which holds Merkle Patricia Forestry's root hashes in the form of datum in `minting_data` spending validator. This root hash is updated every time NFT is minted.
 
   - Policy Id: `"f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a"` Legacy Ada Handle's policy id (Defined in `hal_nft_mint/minting_data.ak`)
@@ -394,7 +400,7 @@ Anything
 
 #### 3.5.4 Validation
 
-- must attach `Settings` NFT in reference inputs.
+- must attach `RefSpendSettings` NFT in reference inputs.
 
 - validate that `ref_spend_governor` withdrawal validator (`ref_spend` withdrawal validator) is executed.
 
@@ -404,7 +410,7 @@ This is withdrawal validator which governs `ref_spend_proxy` spending validator.
 
 #### 3.6.1 Parameter
 
-- _ref_spend_admin_: This is wallet's public key hash. This is `Ref Spend` `Admin`'s wallet and is used to authorize updating CIP68 Datum.
+None
 
 #### 3.6.2 Datum
 
@@ -414,17 +420,17 @@ None (withdrawal validator)
 
 - `Update(AssetName)`
 
+- `Migrate` (Not used for now)
+
 #### 3.6.4 Validation
 
-- must attach `Settings` NFT in reference inputs.
+- must attach `RefSpendSettings` NFT in reference inputs.
 
-- must be signed by `ref_spend_admin` from parameter.
+- must be signed by `ref_spend_admin` from `RefSpendSettingsV1`.
 
 - must spend H.A.L. User Asset whose name is `asset_name` from redeemer.
 
 - there must be only one transaction input with H.A.L. Reference Asset.
-
-  - that transaction input must be from `ref_spend_proxy_script_hash` from `Settings`.
 
   - that transaction input must have only one H.A.L. Reference Asset whose name is `asset_name` from redeemer.
 
@@ -438,13 +444,11 @@ None (withdrawal validator)
 
   - output must NOT have reference script.
 
-- `old_datum` and `new_datum` must be different.
-
 ### 3.7 `royalty_spend` spending validator
 
 #### 3.7.1 Parameter
 
-None
+- _royalty_spend_admin_: Verification Key Hash of Admin Wallet who controls Royalty NFT. (This is Kora Lab Admin Wallet)
 
 #### 3.7.2 Datum
 
@@ -472,42 +476,8 @@ We use `Data` because when `Royalty NFT` is sent with invalid datum, we can fix 
 
 #### 3.7.3 Redeemer
 
-- `Update`
-
-- `Migrate`
+None
 
 #### 3.7.4 Validation
 
-- `Update`: called when admin updates `RoyaltyDatum`.
-
-  - must attach `Settings` NFT in reference inputs.
-
-  - must be signed by `allowed_minter` from `Settings`.
-
-  - there must be only one UTxO in transaction inputs from this script.
-
-  - first output must be royalty output.
-
-    - must have same value as spending input. (except `lovelace` because that can change)
-
-    - must have `RoyaltyDatum` Inline Datum.
-
-    - must NOT have reference_script.
-
-    - output address must be same as spending input or `royalty_spend_script_hash` from `Settings`.
-
-- `Migrate`: called when admin migrates Royalty Token to latest `royalty_spend` spending validator.
-
-  - must attach `Settings` NFT in reference inputs.
-
-  - there must be only one UTxO in transaction inputs from this script.
-
-  - first output must be royalty output.
-
-    - output address must be same as `royalty_spend_script_hash` from `Settings`.
-
-    - must have same value as spending input.
-
-    - must have same datum as spending input.
-
-    - must NOT have reference_script.
+- Transaction must be signed by `royalty_spend_admin` from Parameter

@@ -58,6 +58,20 @@ const makeOrdersSpendUplcProgramParameterDatum = (
   );
 };
 
+const makeRoyaltySpendUplcProgramParameter = (
+  royalty_spend_admin: string
+): UplcValue[] => {
+  return [makeUplcDataValue(makeByteArrayData(royalty_spend_admin))];
+};
+
+const makeRoyaltySpendUplcProgramParameterDatum = (
+  royalty_spend_admin: string
+): InlineTxOutputDatum => {
+  return makeInlineTxOutputDatum(
+    makeListData([makeByteArrayData(royalty_spend_admin)])
+  );
+};
+
 export {
   makeMintingDataUplcProgramParameter,
   makeMintingDataUplcProgramParameterDatum,
@@ -65,4 +79,6 @@ export {
   makeMintProxyUplcProgramParameterDatum,
   makeOrdersSpendUplcProgramParameter,
   makeOrdersSpendUplcProgramParameterDatum,
+  makeRoyaltySpendUplcProgramParameter,
+  makeRoyaltySpendUplcProgramParameterDatum,
 };

@@ -25,11 +25,13 @@ pub fn does_spend_user_asset(
 }
 
 // there must be only one transaction input with H.A.L. Reference Asset.
-pub fn has_only_one_utxo_with_ref_asset(
+// that UTxO must have only one H.A.L. Reference Asset
+pub fn does_spend_only_one_ref_asset(
   inputs: List<Input>,
   hal_policy_id: PolicyId,
+  asset_name: AssetName,
 ) -> Output {
-  let ref_spend_proxy_inputs =
+  let ref_asset_inputs =
     list.filter(
       inputs,
       fn(input) {
@@ -38,9 +40,19 @@ pub fn has_only_one_utxo_with_ref_asset(
       },
     )
 
-  expect [ref_spend_proxy_input] = ref_spend_proxy_inputs
+  // there must be only one UTxO with H.A.L. Reference Asset
+  expect [ref_asset_input] = ref_asset_inputs
+  // that UTxO must have only one H.A.L. Reference Asset
+  let Input { output: ref_asset_utxo, .. } = ref_asset_input
+  let Output { value: input_value, .. } = ref_asset_utxo
+  let ref_asset_name = bytearray.concat(prefix_100, asset_name)
+  let expected_value =
+    value.zero() |> value.add(hal_policy_id, ref_asset_name, 1)
+  let has_only_one_ref_asset =
+    value.without_lovelace(input_value) == expected_value
+  expect has_only_one_ref_asset
 
-  ref_spend_proxy_input.output
+  ref_asset_utxo
 }
 
 fn does_value_have_reference_assets(v: Value, hal_policy_id: PolicyId) -> Bool {

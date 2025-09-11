@@ -1,26 +1,23 @@
-use aiken/transaction.{ScriptContext, Spend}
-use validations/royalty_spend/validation.{can_migrate, can_update}
-
-type RoyaltySpendRedeemer {
-  Update
-  Migrate
-}
+use aiken/list
+use aiken/transaction.{ScriptContext, Spend, Transaction}
+use common/hashes.{VerificationKeyHash}
 
 // This is Spending validator
 // Where H.A.L. Royalty NFT is locked with Royalty datum
 //
-validator {
-  fn spend(
-    _datum: Data,
-    redeemer: RoyaltySpendRedeemer,
-    ctx: ScriptContext,
-  ) -> Bool {
+// You can spend from this validator by signing tx with `royalty_spend_admin`
+//
+validator(royalty_spend_admin: VerificationKeyHash) {
+  fn spend(_datum: Data, _redeemer: Data, ctx: ScriptContext) -> Bool {
     let ScriptContext(transaction, purpose) = ctx
-    expect Spend(spending_output_reference) = purpose
+    expect Spend(_) = purpose
 
-    when redeemer is {
-      Update -> can_update(transaction, spending_output_reference)
-      Migrate -> can_migrate(transaction, spending_output_reference)
-    }
+    let Transaction { extra_signatories, .. } = transaction
+
+    let is_signed_by_royalty_spend_admin =
+      list.has(extra_signatories, royalty_spend_admin)
+    expect is_signed_by_royalty_spend_admin
+
+    True
   }
 }

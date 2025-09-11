@@ -41,9 +41,9 @@ pub fn check_royalty_output(
   // check value
   let expected_royalty_output_value =
     value.zero() |> value.add(hal_policy_id, royalty_asset_full_name, 1)
-  let has_royalty_asset =
+  let has_only_royalty_asset =
     value.without_lovelace(royalty_output_value) == expected_royalty_output_value
-  expect has_royalty_asset
+  expect has_only_royalty_asset
 
   // check datum type
   expect InlineDatum(royalty_datum) = royalty_output_datum

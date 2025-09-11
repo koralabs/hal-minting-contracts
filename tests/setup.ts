@@ -141,6 +141,10 @@ const setup = async () => {
   const refSpendAdminWallet = emulator.createWallet(ACCOUNT_LOVELACE);
   emulator.tick(200);
 
+  // royalty spend admin wallet
+  const royaltySpendAdminWallet = emulator.createWallet(ACCOUNT_LOVELACE);
+  emulator.tick(200);
+
   // payment wallet
   const paymentWallet = emulator.createWallet(ACCOUNT_LOVELACE);
   emulator.tick(200);
@@ -184,6 +188,7 @@ const setup = async () => {
     mint_version: mintVersion,
     admin_verification_key_hash: adminPubKeyHash,
     orders_spend_randomizer: "",
+    royalty_spend_admin: royaltySpendAdminWallet.spendingPubKeyHash.toHex(),
   });
   const {
     halPolicyHash,
@@ -515,6 +520,7 @@ const setup = async () => {
       adminWallet,
       allowedMinterWallet,
       refSpendAdminWallet,
+      royaltySpendAdminWallet,
       paymentWallet,
       usersWallets,
       specialUsersWallets,

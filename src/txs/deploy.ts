@@ -11,6 +11,7 @@ import {
   makeMintingDataUplcProgramParameterDatum,
   makeMintProxyUplcProgramParameterDatum,
   makeOrdersSpendUplcProgramParameterDatum,
+  makeRoyaltySpendUplcProgramParameterDatum,
 } from "../contracts/index.js";
 import { convertError, invariant } from "../helpers/index.js";
 import { fetchDeployedScript } from "../utils/contract.js";
@@ -20,6 +21,7 @@ interface DeployParams {
   mintVersion: bigint;
   adminVerificationKeyHash: string;
   ordersSpendRandomizer?: string | undefined;
+  royaltySpendAdmin: string;
   contractName: string;
 }
 
@@ -44,6 +46,7 @@ const deploy = async (params: DeployParams): Promise<DeployData> => {
     mintVersion,
     adminVerificationKeyHash,
     ordersSpendRandomizer = "",
+    royaltySpendAdmin,
     contractName,
   } = params;
 
@@ -52,6 +55,7 @@ const deploy = async (params: DeployParams): Promise<DeployData> => {
     mint_version: mintVersion,
     admin_verification_key_hash: adminVerificationKeyHash,
     orders_spend_randomizer: ordersSpendRandomizer,
+    royalty_spend_admin: royaltySpendAdmin,
   });
   const {
     halPolicyHash,
@@ -132,6 +136,11 @@ const deploy = async (params: DeployParams): Promise<DeployData> => {
       return {
         ...extractScriptCborsFromUplcProgram(
           royaltySpendConfig.royaltySpendUplcProgram
+        ),
+        datumCbor: bytesToHex(
+          makeRoyaltySpendUplcProgramParameterDatum(
+            royaltySpendAdmin
+          ).data.toCbor()
         ),
         validatorHash: royaltySpendConfig.royaltySpendValidatorHash.toHex(),
         scriptAddress:

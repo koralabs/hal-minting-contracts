@@ -139,11 +139,12 @@ const buildSettingsDataCbor = () => {
     MINT_VERSION,
     ADMIN_VERIFICATION_KEY_HASH,
     ORDERS_SPEND_RANDOMIZER,
-    REF_SPEND_ADMIN,
+    ROYALTY_SPEND_ADMIN,
     ALLOWED_MINTER,
     HAL_NFT_PRICE,
     PAYMENT_ADDRESS,
     MINTING_START_TIME,
+    REF_SPEND_ADMIN,
   } = configs;
 
   const contractsConfig = buildContracts({
@@ -151,6 +152,7 @@ const buildSettingsDataCbor = () => {
     mint_version: MINT_VERSION,
     admin_verification_key_hash: ADMIN_VERIFICATION_KEY_HASH,
     orders_spend_randomizer: ORDERS_SPEND_RANDOMIZER,
+    royalty_spend_admin: ROYALTY_SPEND_ADMIN,
   });
   const {
     halPolicyHash,
@@ -195,6 +197,7 @@ const buildRefSpendSettingsDataCbor = () => {
     MINT_VERSION,
     ADMIN_VERIFICATION_KEY_HASH,
     ORDERS_SPEND_RANDOMIZER,
+    ROYALTY_SPEND_ADMIN,
     REF_SPEND_ADMIN,
   } = configs;
 
@@ -203,6 +206,7 @@ const buildRefSpendSettingsDataCbor = () => {
     mint_version: MINT_VERSION,
     admin_verification_key_hash: ADMIN_VERIFICATION_KEY_HASH,
     orders_spend_randomizer: ORDERS_SPEND_RANDOMIZER,
+    royalty_spend_admin: ROYALTY_SPEND_ADMIN,
   });
   const { halPolicyHash, refSpend: refSpendConfig } = contractsConfig;
 
@@ -221,14 +225,19 @@ const buildRefSpendSettingsDataCbor = () => {
 
 const getStakingAddresses = () => {
   const configs = GET_CONFIGS(NETWORK as NetworkName);
-  const { MINT_VERSION, ADMIN_VERIFICATION_KEY_HASH, ORDERS_SPEND_RANDOMIZER } =
-    configs;
+  const {
+    MINT_VERSION,
+    ADMIN_VERIFICATION_KEY_HASH,
+    ORDERS_SPEND_RANDOMIZER,
+    ROYALTY_SPEND_ADMIN,
+  } = configs;
 
   const contractsConfig = buildContracts({
     isMainnet: (NETWORK as NetworkName) == "mainnet",
     mint_version: MINT_VERSION,
     admin_verification_key_hash: ADMIN_VERIFICATION_KEY_HASH,
     orders_spend_randomizer: ORDERS_SPEND_RANDOMIZER,
+    royalty_spend_admin: ROYALTY_SPEND_ADMIN,
   });
   const { mint: mintConfig, refSpend: refSpendConfig } = contractsConfig;
 
@@ -240,8 +249,12 @@ const getStakingAddresses = () => {
 
 const doDeployActions = async () => {
   const configs = GET_CONFIGS(NETWORK as NetworkName);
-  const { MINT_VERSION, ADMIN_VERIFICATION_KEY_HASH, ORDERS_SPEND_RANDOMIZER } =
-    configs;
+  const {
+    MINT_VERSION,
+    ADMIN_VERIFICATION_KEY_HASH,
+    ORDERS_SPEND_RANDOMIZER,
+    ROYALTY_SPEND_ADMIN,
+  } = configs;
 
   let finished: boolean = false;
   while (!finished) {
@@ -259,6 +272,7 @@ const doDeployActions = async () => {
               mintVersion: MINT_VERSION,
               adminVerificationKeyHash: ADMIN_VERIFICATION_KEY_HASH,
               ordersSpendRandomizer: ORDERS_SPEND_RANDOMIZER,
+              royaltySpendAdmin: ROYALTY_SPEND_ADMIN,
               contractName: contract,
             });
 

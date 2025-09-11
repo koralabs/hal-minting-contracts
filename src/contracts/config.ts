@@ -22,6 +22,7 @@ interface BuildContractsParams {
   mint_version: bigint;
   admin_verification_key_hash: string;
   orders_spend_randomizer?: string | undefined;
+  royalty_spend_admin: string;
 }
 
 /**
@@ -35,6 +36,7 @@ const buildContracts = (params: BuildContractsParams) => {
     mint_version,
     admin_verification_key_hash,
     orders_spend_randomizer = "",
+    royalty_spend_admin,
   } = params;
 
   // "mint_proxy.mint"
@@ -102,7 +104,8 @@ const buildContracts = (params: BuildContractsParams) => {
   );
 
   // "royalty_spend.spend"
-  const royaltySpendUplcProgram = getRoyaltySpendUplcProgram();
+  const royaltySpendUplcProgram =
+    getRoyaltySpendUplcProgram(royalty_spend_admin);
   const royaltySpendValidatorHash = makeValidatorHash(
     royaltySpendUplcProgram.hash()
   );

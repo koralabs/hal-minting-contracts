@@ -12,7 +12,7 @@ use aiken/transaction/credential.{
 use aiken/transaction/value.{AssetName, Value}
 use common/cip68.{CIP68Datum, prefix_100, prefix_222}
 use common/hashes.{ScriptHash, VerificationKeyHash}
-use common/royalty.{RoyaltyDatum, royalty_asset_full_name}
+use common/royalty.{RoyaltyDatum}
 use hal_nft_mint/minting_data.{MintingData}
 use hal_nft_mint/orders.{OrderDatum}
 use hal_nft_mint/settings.{Settings}
@@ -114,22 +114,6 @@ pub fn make_ref_spend_proxy_user_input_and_output(
       reference_script: None,
     },
   )
-}
-
-pub fn make_royalty_spend_proxy_input(tx_hash: ByteArray) -> Input {
-  Input {
-    output_reference: OutputReference {
-      transaction_id: TransactionId { hash: tx_hash },
-      output_index: 0,
-    },
-    output: Output {
-      address: credential.from_script(royalty_spend_script_hash),
-      value: value.zero()
-        |> value.add(hal_policy_id, royalty_asset_full_name, 1),
-      datum: make_royalty_datum(),
-      reference_script: None,
-    },
-  }
 }
 
 pub fn make_user_output(

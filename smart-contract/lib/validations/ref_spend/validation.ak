@@ -5,7 +5,7 @@ use common/cip68.{CIP68Datum}
 use ref_spend/settings.{RefSpendSettings, find_ref_spend_settings}
 use ref_spend/settings_v1.{RefSpendSettingsV1}
 use validations/ref_spend/utils.{
-  does_spend_user_asset, has_only_one_utxo_with_ref_asset,
+  does_spend_only_one_ref_asset, does_spend_user_asset,
 }
 
 // Validation:
@@ -39,19 +39,18 @@ pub fn can_update(transaction: Transaction, asset_name: AssetName) -> Bool {
   expect spend_user_asset
 
   // there must be only one transaction input with H.A.L. Reference Asset.
-  let ref_spend_proxy_utxo =
-    has_only_one_utxo_with_ref_asset(inputs, hal_policy_id)
-  let Output { address: input_address, value: input_value, .. } =
-    ref_spend_proxy_utxo
+  let ref_asset_utxo =
+    does_spend_only_one_ref_asset(inputs, hal_policy_id, asset_name)
+  let Output { address: input_address, value: input_value, .. } = ref_asset_utxo
 
   // the first output must be `reference_output`.
-  expect [ref_spend_proxy_output, ..] = outputs
+  expect [ref_asset_output, ..] = outputs
   let Output {
     address: output_address,
     value: output_value,
     datum: output_datum,
     reference_script: output_reference_script,
-  } = ref_spend_proxy_output
+  } = ref_asset_output
 
   // address must stay same
   expect input_address == output_address
