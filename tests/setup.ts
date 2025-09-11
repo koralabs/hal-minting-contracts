@@ -35,10 +35,12 @@ import {
   fillAssets,
   getWhitelistedKey,
   init,
+  makeVoidData,
   makeWhitelistedValueData,
   MintingData,
   RefSpendSettings,
   RefSpendSettingsV1,
+  RoyaltyDatum,
   Settings,
   SettingsV1,
   WhitelistedValue,
@@ -183,12 +185,14 @@ const setup = async () => {
   // ============ build contracts ============
   const mintVersion = 0n;
   const adminPubKeyHash = adminWallet.spendingPubKeyHash.toHex();
+  const royaltySpendAdminPubKeyHash =
+    royaltySpendAdminWallet.spendingPubKeyHash.toHex();
   const contractsConfig = buildContracts({
     isMainnet,
     mint_version: mintVersion,
     admin_verification_key_hash: adminPubKeyHash,
     orders_spend_randomizer: "",
-    royalty_spend_admin: royaltySpendAdminWallet.spendingPubKeyHash.toHex(),
+    royalty_spend_admin: royaltySpendAdminPubKeyHash,
   });
   const {
     halPolicyHash,
@@ -495,6 +499,13 @@ const setup = async () => {
 
   const usedOrdersCount: Record<string, number> = {};
 
+  // For royalty
+  const dumbRoyaltyDatum: RoyaltyDatum = {
+    recipients: [],
+    version: 0,
+    extra: makeVoidData(),
+  };
+
   return {
     isMainnet,
     emulator,
@@ -524,6 +535,10 @@ const setup = async () => {
       paymentWallet,
       usersWallets,
       specialUsersWallets,
+    },
+    royalty: {
+      dumbRoyaltyDatum,
+      txInput: undefined as TxInput | undefined,
     },
     normalMintingTime: mintingStartTime + GRACE_PERIOD,
     whitelistMintingTimeTwoHoursEarly:

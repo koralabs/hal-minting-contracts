@@ -140,6 +140,7 @@ interface UpdateRoyaltyParams {
   newRoyaltyDatum: RoyaltyDatum;
   deployedScripts: DeployedScripts;
   settingsAssetTxInput: TxInput;
+  royaltySpendAdmin: string;
 }
 
 /**
@@ -156,6 +157,7 @@ const updateRoyalty = async (
     newRoyaltyDatum,
     deployedScripts,
     settingsAssetTxInput,
+    royaltySpendAdmin,
   } = params;
 
   const { royaltySpendScriptTxInput } = deployedScripts;
@@ -206,6 +208,9 @@ const updateRoyalty = async (
 
   // <-- attach deployed scripts
   txBuilder.refer(royaltySpendScriptTxInput);
+
+  // <-- add royalty spend admin signer
+  txBuilder.addSigners(makePubKeyHash(royaltySpendAdmin));
 
   // <-- spend Royalty Token
   txBuilder.spendUnsafe(royaltyTxInput, updateRedeemer);

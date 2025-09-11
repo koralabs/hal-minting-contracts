@@ -15,14 +15,14 @@ export const ORDERS_SPEND_RANDOMIZER = "";
 
 // `royalty_spend.spend` contract will change
 export const ROYALTY_SPEND_ADMIN =
-  "976ec349c3a14f58959088e13e98f6cd5a1e8f27f6f3160b25e415ca";
+  "4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1";
 // ------- End H.A.L. Mint Contracts Config -------
 
 // ------- Settings Data -------
 
 // allowed minter verification key hash
 export const ALLOWED_MINTER =
-  "976ec349c3a14f58959088e13e98f6cd5a1e8f27f6f3160b25e415ca";
+  "4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1";
 
 // HAL NFT Price
 export const HAL_NFT_PRICE = 180_000_000n;
@@ -41,6 +41,6 @@ export const MINTING_START_TIME = 1752537600000;
 
 // ref spend admin
 export const REF_SPEND_ADMIN =
-  "976ec349c3a14f58959088e13e98f6cd5a1e8f27f6f3160b25e415ca";
+  "4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1";
 
 // ------- End Ref Spend Settings Data -------

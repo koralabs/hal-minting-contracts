@@ -22,6 +22,7 @@ import {
   invariant,
   makeVoidData,
   mayFailTransaction,
+  mintRoyalty,
   Order,
   prepareMintTransaction,
   prepareOrders,
@@ -29,6 +30,7 @@ import {
   request,
   rollBackOrdersFromTries,
   update,
+  updateRoyalty,
 } from "../src/index.js";
 import { myTest } from "./setup.js";
 import {
@@ -41,6 +43,77 @@ import {
 } from "./utils.js";
 
 describe.sequential("Koralab H.A.L Tests", () => {
+  myTest(
+    "mint royalty nft",
+    async ({ isMainnet, emulator, wallets, royalty, deployedScripts }) => {
+      const { allowedMinterWallet } = wallets;
+
+      const settingsResult = await fetchSettings(isMainnet);
+      invariant(settingsResult.ok, "Settings Fetch Failed");
+      const { settingsAssetTxInput } = settingsResult.data;
+
+      const txBuilderResult = await mintRoyalty({
+        isMainnet,
+        royaltyDatum: royalty.dumbRoyaltyDatum,
+        deployedScripts,
+        settingsAssetTxInput,
+      });
+      invariant(txBuilderResult.ok, "Royalty Mint Tx Building failed");
+
+      const txBuilder = txBuilderResult.data;
+      const txResult = await mayFailTransaction(
+        txBuilder,
+        allowedMinterWallet.address,
+        await allowedMinterWallet.utxos
+      ).complete();
+      invariant(txResult.ok, "Royalty Mint Tx Complete failed");
+
+      const { tx } = txResult.data;
+      tx.addSignatures(await allowedMinterWallet.signTx(tx));
+      await allowedMinterWallet.submitTx(tx);
+      emulator.tick(200);
+
+      const txInput = await emulator.getUtxo(makeTxOutputId(tx.id(), 0));
+      royalty.txInput = txInput;
+    }
+  );
+
+  myTest(
+    "update royalty nft",
+    async ({ isMainnet, emulator, wallets, royalty, deployedScripts }) => {
+      const { royaltySpendAdminWallet } = wallets;
+
+      const settingsResult = await fetchSettings(isMainnet);
+      invariant(settingsResult.ok, "Settings Fetch Failed");
+      const { settingsAssetTxInput } = settingsResult.data;
+
+      const royaltyTxInput = royalty.txInput;
+      invariant(!!royaltyTxInput, "Royalty is not minted yet");
+      const txBuilderResult = await updateRoyalty({
+        isMainnet,
+        royaltyTxInput,
+        newRoyaltyDatum: royalty.dumbRoyaltyDatum,
+        deployedScripts,
+        settingsAssetTxInput,
+        royaltySpendAdmin: royaltySpendAdminWallet.spendingPubKeyHash.toHex(),
+      });
+      invariant(txBuilderResult.ok, "Royalty Update Tx Building failed");
+
+      const txBuilder = txBuilderResult.data;
+      const txResult = await mayFailTransaction(
+        txBuilder,
+        royaltySpendAdminWallet.address,
+        await royaltySpendAdminWallet.utxos
+      ).complete();
+      invariant(txResult.ok, "Royalty Update Tx Complete failed");
+
+      const { tx } = txResult.data;
+      tx.addSignatures(await royaltySpendAdminWallet.signTx(tx));
+      await royaltySpendAdminWallet.submitTx(tx);
+      emulator.tick(200);
+    }
+  );
+
   // user_1 orders 3 new assets
   myTest(
     "user_1 orders 3 new assets",
