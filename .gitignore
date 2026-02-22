@@ -70,3 +70,8 @@ initial-whitelist-test-db/
 smart-contract/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb
 smart-contract/plutus.json
 scripts/.env*
+
+# test coverage outputs
+.c8-temp/
+coverage/
+coverage-*/
