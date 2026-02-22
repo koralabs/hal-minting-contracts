@@ -1,22 +1,26 @@
 FORMAT_VERSION=1
 REPO=hal-minting-contracts
-TIMESTAMP_UTC=2026-02-22T16:29:33Z
+TIMESTAMP_UTC=2026-02-22T19:12:58Z
 THRESHOLD_LINES=90
 THRESHOLD_BRANCHES=90
-TOTAL_LINES_PCT=100
-TOTAL_BRANCHES_PCT=100
-STATUS=pass
-SOURCE_PATHS=src/index.ts,src/contracts/**,src/helpers/**
-EXCLUDED_PATHS=NONE
-LANGUAGE_SUMMARY=nodejs:lines=100,branches=100,tool=vitest-v8,status=pass
+TOTAL_LINES_PCT=93.44
+TOTAL_BRANCHES_PCT=91.72
+STATUS=partial
+SOURCE_PATHS=src/**/*.ts,smart-contract/**/*.ak
+EXCLUDED_PATHS=scripts/**:operator/manual scripts not part of package runtime test flow;smart-contract/**:Aiken coverage metrics unavailable (aiken check exited with code 1 (see raw output))
+LANGUAGE_SUMMARY=nodejs:lines=93.44,branches=91.72,tool=vitest-v8+nyc,status=pass;aiken:lines=NA,branches=NA,tool=aiken check,status=na
 
-=== RAW_OUTPUT_VITEST ===
+=== RAW_OUTPUT_NODE_TESTS ===
+
+> @koralabs/hal-minting-contracts@1.2.26 test
+> vitest run --coverage --coverage.provider=v8 --coverage.include=src/**/*.ts --coverage.reporter=json --coverage.reporter=json-summary --coverage.clean=true --coverage.reportsDirectory=/tmp/hal-minting-contracts-int.SILNWK
+
 
  RUN  v3.2.4 /home/jesse/src/koralabs/hal-minting-contracts
       Coverage enabled with v8
 
 stdout | tests/mint.test.ts
-[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  suppress all logs with { quiet: true }
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
 
 stdout | tests/mint.test.ts
 ======= Starting Pre Filling DB =======
@@ -70,19 +74,19 @@ IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 3 new assets - <hal-1, hal-2, hal-3>
 [1m[32mmem: 1948056 (13.915 %), cpu: 605245959 (6.052 %), tx size: 2732 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint royalty nft 43ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > update royalty nft 13ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 orders 3 new assets 9ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint royalty nft 48ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > update royalty nft 14ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 orders 3 new assets 8ms
  ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot mint 3 new assets - <hal-1, hal-2, hal-3> as whitelisted 2ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 3 new assets - <hal-1, hal-2, hal-3> 136ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 3 new assets - <hal-1, hal-2, hal-3> 143ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 5 new assets - <hal-4, hal-5, hal-6, hal-7, hal-8> as whitelisted
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 5 new assets - <hal-4, hal-5, hal-6, hal-7, hal-8> as whitelisted
 [1m[32mmem: 3131124 (22.365 %), cpu: 999277103 (9.993 %), tx size: 3886 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_4 orders 5 new assets who is whitelisted 9ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 5 new assets - <hal-4, hal-5, hal-6, hal-7, hal-8> as whitelisted 177ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_4 orders 5 new assets who is whitelisted 8ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 5 new assets - <hal-4, hal-5, hal-6, hal-7, hal-8> as whitelisted 188ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > user_1 can update <hal-1> datum
 {
   ok: true,
@@ -112,15 +116,14 @@ stdout | tests/mint.test.ts > Koralab H.A.L Tests > cannot mint 2 new assets bec
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 can update <hal-1> datum 26ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_2 orders 2 new assets 2 times 10ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot mint 2 new assets because one asset name is not pre-defined in MPT - <hal-9, hal-10> and <hal-11, no-hal-12> 30ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot cancel 2 orders in a transaction 31ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot refund 2 orders in a transaction 29ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can cancel one order
 [1m[32mmem: 91984 (0.657 %), cpu: 29419350 (0.294 %), tx size: 360 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 can update <hal-1> datum 20ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_2 orders 2 new assets 2 times 9ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot mint 2 new assets because one asset name is not pre-defined in MPT - <hal-9, hal-10> and <hal-11, no-hal-12> 26ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot cancel 2 orders in a transaction 19ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > cannot refund 2 orders in a transaction 16ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > can cancel one order 17ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can refund one order
 [1m[32mmem: 267312 (1.909 %), cpu: 81893478 (0.819 %), tx size: 328 bytes[39m[22m
 
@@ -133,11 +136,12 @@ IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 3 new assets - <hal-9, hal-10, hal-11>
 [1m[32mmem: 1903120 (13.594 %), cpu: 594157819 (5.942 %), tx size: 2605 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > can refund one order 21ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 request order with invalid datum 8ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > refund order with invalid datum 20ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > can cancel one order 17ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > can refund one order 23ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 request order with invalid datum 7ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > refund order with invalid datum 23ms
  ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1 orders 3 new assets 8ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 3 new assets - <hal-9, hal-10, hal-11> 114ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 3 new assets - <hal-9, hal-10, hal-11> 122ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-101 ~ hal-115> - 1 user recieve 15 assets
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
@@ -147,7 +151,7 @@ stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-10
 [1m[32mmem: 9764948 (69.750 %), cpu: 3006689197 (30.067 %), tx size: 9864 bytes[39m[22m
 
  ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_3 orders 5 new assets 3 times 9ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-101 ~ hal-115> - 1 user recieve 15 assets 389ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-101 ~ hal-115> - 1 user recieve 15 assets 409ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-151 ~ hal-165> - 3 users recieve 5 assets each
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
@@ -156,8 +160,8 @@ IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-151 ~ hal-165> - 3 users recieve 5 assets each
 [1m[32mmem: 9572628 (68.376 %), cpu: 2983569832 (29.836 %), tx size: 10116 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1, user_2, user_3 order 5 new assets 10ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-151 ~ hal-165> - 3 users recieve 5 assets each 388ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_1, user_2, user_3 order 5 new assets 9ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > mint 15 new assets - <hal-151 ~ hal-165> - 3 users recieve 5 assets each 411ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can mint 9 new assets - <hal-201 ~ hal-209> as whitelisted
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
@@ -172,8 +176,8 @@ IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can mint 9 new assets - <hal-201 ~ hal-209> as whitelisted
 [1m[32mmem: 6322246 (45.159 %), cpu: 2000355093 (20.004 %), tx size: 6772 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_4 orders 9 new assets who is whitelisted 14ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > can mint 9 new assets - <hal-201 ~ hal-209> as whitelisted 269ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > user_4 orders 9 new assets who is whitelisted 21ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > can mint 9 new assets - <hal-201 ~ hal-209> as whitelisted 382ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 8 order UTxOs - <hal-301 ~ hal-308> as whitelisted
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
@@ -187,8 +191,8 @@ IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 8 order UTxOs - <hal-301 ~ hal-308> as whitelisted
 [1m[32mmem: 8124784 (58.034 %), cpu: 3126966792 (31.270 %), tx size: 8347 bytes[39m[22m
 
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > special user_1 ~ user_8 orders 8 new assets 13ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 8 order UTxOs - <hal-301 ~ hal-308> as whitelisted 349ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > special user_1 ~ user_8 orders 8 new assets 20ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 8 order UTxOs - <hal-301 ~ hal-308> as whitelisted 362ms
 stdout | tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 4 order UTxOs - <hal-401 ~ hal-408> as whitelisted
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
 IS_ORDER_TX_VALID addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c 4ad0d439ac00c1577d9a83d6fa384a89611d5ef6cecd3efd6c4a4e6a addr_test1wp9dp4pe4sqvz4man2pad73cf2ykz8277m8v60had39yu6s3q542c true
@@ -199,34 +203,121 @@ stdout | tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 4
 [1m[32mmem: 6377982 (45.557 %), cpu: 2128129401 (21.281 %), tx size: 7011 bytes[39m[22m
 
  ✓ tests/mint.test.ts > Koralab H.A.L Tests > special user_1 ~ user_4 orders 8 new assets 10ms
- ✓ tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 4 order UTxOs - <hal-401 ~ hal-408> as whitelisted 293ms
+ ✓ tests/mint.test.ts > Koralab H.A.L Tests > can mint 8 new assets from 4 order UTxOs - <hal-401 ~ hal-408> as whitelisted 296ms
 
  Test Files  1 passed (1)
       Tests  28 passed (28)
-   Start at  08:29:25
-   Duration  8.45s (transform 183ms, setup 5.65s, collect 24ms, tests 2.42s, environment 0ms, prepare 56ms)
+   Start at  11:12:46
+   Duration  8.80s (transform 178ms, setup 5.64s, collect 24ms, tests 2.67s, environment 0ms, prepare 53ms)
 
- % Coverage report from v8
+
+> @koralabs/hal-minting-contracts@1.2.26 test:unit
+> vitest run --config vitest.unit.config.ts --coverage --coverage.provider=v8 --coverage.include=src/**/*.ts --coverage.reporter=json --coverage.reporter=json-summary --coverage.clean=true --coverage.reportsDirectory=/tmp/hal-minting-contracts-unit.kksAe5
+
+
+ RUN  v3.2.4 /home/jesse/src/koralabs/hal-minting-contracts
+      Coverage enabled with v8
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > constants computes network host for mainnet and non-mainnet
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > constants computes network host for mainnet and non-mainnet
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > constants computes network host for mainnet and non-mainnet
+[dotenv@17.2.1] injecting env (0) from .env.development.local -- tip: ⚙️  write to custom object with { processEnv: myObject }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths
+623e..[56 digits]..13cd #18a25c0fbbbd { k → v }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths
+ø
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths
+╔═══════════════════════════════════════════════════════════════════╗
+║ #309b210c69c4d30677e5aad8dabbee7450f67bfb6644baf19a151de6f501437b ║
+╚═══════════════════════════════════════════════════════════════════╝
+ ┌─ 6 #db142f049571
+ └─ 8 #3b92d65d6126
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths
+[ { ok: true } ]
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths
+ab
+
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > constants computes network host for mainnet and non-mainnet 19ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > invariant supports default, string, and lazy messages 5ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > convertError handles unknown shapes 6ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > MPT proof parser handles branch/fork/leaf and errors 4ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > common contract data helpers cover credential/staking/datum branches 8ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > blockfrost network parser and client factory work for valid keys 24ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > helper config supports get/has for strings and numbers 21ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > store and proof helpers execute success/error paths 124ms
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > order request and validation cover key guard branches
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > order request and validation cover key guard branches
+IS_ORDER_TX_VALID addr_test1wz42424242424242424242424242424242424242424242shfdwdy aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa addr_test1wz42424242424242424242424242424242424242424242shfdwdy true
+IS_ORDER_TX_VALID addr_test1vqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqd9tg5t aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa addr_test1wz42424242424242424242424242424242424242424242shfdwdy false
+IS_ORDER_TX_VALID addr_test1wz42424242424242424242424242424242424242424242shfdwdy aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa addr_test1wz42424242424242424242424242424242424242424242shfdwdy true
+IS_ORDER_TX_VALID addr_test1wz42424242424242424242424242424242424242424242shfdwdy aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa addr_test1wz42424242424242424242424242424242424242424242shfdwdy true
+IS_ORDER_TX_VALID addr_test1wz42424242424242424242424242424242424242424242shfdwdy aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa addr_test1wz42424242424242424242424242424242424242424242shfdwdy true
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > deploy and configs modules execute real success/error paths
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  suppress all logs with { quiet: true }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > whitelist helpers cover branches and error handling
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > order request and validation cover key guard branches 36ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > deploy and configs modules execute real success/error paths 65ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > whitelist helpers cover branches and error handling 24ms
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > helpers and utility modules execute standard paths
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  write to custom object with { processEnv: myObject }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > ref spend and royalty return expected guard errors
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  override existing env vars with { override: true }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > ref spend and royalty return expected guard errors
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  suppress all logs with { quiet: true }
+
+stdout | tests/runtime.unit.ts > Runtime Unit Coverage > prepare mint and rollback cover guard branches
+[dotenv@17.2.1] injecting env (0) from .env.test.local -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > helpers and utility modules execute standard paths 8ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > staking registration builder runs through all operations 6ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > ref spend and royalty return expected guard errors 44ms
+ ✓ tests/runtime.unit.ts > Runtime Unit Coverage > prepare mint and rollback cover guard branches 32ms
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  11:12:55
+   Duration  1.08s (transform 189ms, setup 0ms, collect 224ms, tests 427ms, environment 0ms, prepare 57ms)
+
+coverage files in /tmp/hal-minting-contracts-merge-input.lQpGl1 merged into /tmp/hal-minting-contracts-merged.sqoIwH/coverage-final.json
 
 =============================== Coverage summary ===============================
-Statements   : 100% ( 1320/1320 )
-Branches     : 100% ( 30/30 )
-Functions    : 100% ( 16/16 )
-Lines        : 100% ( 1320/1320 )
+Statements   : 93.44% ( 3609/3862 )
+Branches     : 91.72% ( 421/459 )
+Functions    : 86.86% ( 119/137 )
+Lines        : 93.44% ( 3609/3862 )
 ================================================================================
 
-=== RAW_OUTPUT_COVERAGE_SUMMARY_JSON ===
-{"total": {"lines":{"total":1320,"covered":1320,"skipped":0,"pct":100},"statements":{"total":1320,"covered":1320,"skipped":0,"pct":100},"functions":{"total":16,"covered":16,"skipped":0,"pct":100},"branches":{"total":30,"covered":30,"skipped":0,"pct":100},"branchesTrue":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/index.ts": {"lines":{"total":6,"covered":6,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":6,"covered":6,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/config.ts": {"lines":{"total":111,"covered":111,"skipped":0,"pct":100},"functions":{"total":1,"covered":1,"skipped":0,"pct":100},"statements":{"total":111,"covered":111,"skipped":0,"pct":100},"branches":{"total":1,"covered":1,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/index.ts": {"lines":{"total":5,"covered":5,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":5,"covered":5,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/optimized-blueprint.ts": {"lines":{"total":434,"covered":434,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":434,"covered":434,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/unoptimized-blueprint.ts": {"lines":{"total":434,"covered":434,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":434,"covered":434,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/validators.ts": {"lines":{"total":140,"covered":140,"skipped":0,"pct":100},"functions":{"total":7,"covered":7,"skipped":0,"pct":100},"statements":{"total":140,"covered":140,"skipped":0,"pct":100},"branches":{"total":21,"covered":21,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/data/index.ts": {"lines":{"total":11,"covered":11,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":11,"covered":11,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/data/settings.ts": {"lines":{"total":52,"covered":52,"skipped":0,"pct":100},"functions":{"total":4,"covered":4,"skipped":0,"pct":100},"statements":{"total":52,"covered":52,"skipped":0,"pct":100},"branches":{"total":4,"covered":4,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/contracts/data/settings_v1.ts": {"lines":{"total":119,"covered":119,"skipped":0,"pct":100},"functions":{"total":4,"covered":4,"skipped":0,"pct":100},"statements":{"total":119,"covered":119,"skipped":0,"pct":100},"branches":{"total":4,"covered":4,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/helpers/index.ts": {"lines":{"total":5,"covered":5,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":5,"covered":5,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/helpers/blockfrost/index.ts": {"lines":{"total":2,"covered":2,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":2,"covered":2,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-,"/home/jesse/src/koralabs/hal-minting-contracts/src/helpers/common/index.ts": {"lines":{"total":1,"covered":1,"skipped":0,"pct":100},"functions":{"total":0,"covered":0,"skipped":0,"pct":100},"statements":{"total":1,"covered":1,"skipped":0,"pct":100},"branches":{"total":0,"covered":0,"skipped":0,"pct":100}}
-}
+=== RAW_OUTPUT_AIKEN_TESTS ===
+[31m        Error aiken::parser[0m
+
+  [31m×[0m While parsing files...
+[31m  ╰─▶ [0mI found an unexpected token '"once"'.
+[31m      [0m
+     ╭─[[36;1;4m/home/jesse/src/koralabs/hal-minting-contracts/smart-contract/build/packages/aiken-lang-fuzz/lib/aiken/fuzz.test.ak[0m:159:1]
+ [2m159[0m │ 
+ [2m160[0m │ test prop_int_between_boundary_up(n via int_between(0, 2)) fail once {
+     · [35;1m                                                                ────[0m
+ [2m161[0m │   n < 2
+     ╰────
+[36m  help: [0mTry removing it!
+
