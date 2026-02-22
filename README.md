@@ -2,6 +2,12 @@
 
 This project enables users to mint HAL NFTs among pre-defined 10,000 NFTs.
 
+## Documentation
+
+- [Docs Index](./docs/index.md)
+- [Product Docs](./docs/product/index.md)
+- [Spec Docs](./docs/spec/index.md)
+
 > Project's Story
 
 There are 10,000 pre-defined HAL NFTs.
