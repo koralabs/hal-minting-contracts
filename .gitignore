@@ -75,3 +75,6 @@ scripts/.env*
 .c8-temp/
 coverage/
 coverage-*/
+
+# K.O.R.A executor logs
+.kora/executor-logs/
