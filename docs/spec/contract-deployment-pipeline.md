@@ -12,40 +12,56 @@ The repo should define what ought to be live on `preview`, `preprod`, and `mainn
 - Volatile fields such as `tx_hash`, `output_index`, and current UTxO refs belong in observed-state artifacts, not committed desired-state YAML.
 
 ## Desired State Files
-The intended layout is:
+The committed layout is:
 
 ```text
-deploy/<network>/<contract_slug>.yaml
+deploy/preview/hal-minting.yaml
+deploy/preprod/hal-minting.yaml
+deploy/mainnet/hal-minting.yaml
 ```
 
-Each file should contain stable desired state only:
+Each file contains stable desired state only:
 
 ```yaml
 schema_version: 1
 network: preview
-contract_slug: hal-minting
-build:
-  target: <repo build target>
-  kind: validator
-subhandle_strategy:
-  namespace: handlecontract
-  format: contract_slug_ordinal
+build_parameters:
+  mint_version: 0
+  admin_verification_key_hash: <hex>
+  orders_spend_randomizer: ""
+  royalty_spend_admin: <hex>
 settings:
-  type: hal_minting_settings
-  values:
-    # repo-owned datum/settings values only
+  hal_settings:
+    allowed_minter: <hex>
+    hal_nft_price: 30000000
+    payment_address: <bech32>
+    minting_start_time: 1757631246160
+  ref_spend_settings:
+    ref_spend_admin: <hex>
+  minting_data:
+    mpt_root_hash: <hex>
+    whitelist_mpt_root_hash: <hex>
+contracts:
+  - contract_slug: hal-mint-proxy
+    script_type: hal_mint_proxy
+    deployment_handle_slug: halmntprxy
+    build:
+      contract_name: mint_proxy.mint
+      kind: minting_policy
 ```
 
 Required stable fields:
 - `schema_version`
 - `network`
-- `contract_slug`
-- `build.target`
-- `build.kind`
-- `subhandle_strategy.namespace`
-- `subhandle_strategy.format`
-- `settings.type`
-- `settings.values`
+- `build_parameters.*`
+- `settings.hal_settings.*`
+- `settings.ref_spend_settings.ref_spend_admin`
+- `settings.minting_data.*`
+- `contracts[].contract_slug`
+- `contracts[].script_type`
+- `contracts[].deployment_handle_slug`
+- `contracts[].build.contract_name`
+- `contracts[].build.kind`
 
 Observed-only fields that must not be committed into desired-state YAML:
 - `current_script_hash`
@@ -66,38 +82,23 @@ Deployment automation should:
 No deployment artifact should be created when desired and live state already match.
 
 ## SubHandle Rules
-- A script hash change requires a new SubHandle in the format `<contract_slug><ordinal>@handlecontract`.
+- A script hash change requires a new SubHandle in the format `<deployment_handle_slug><ordinal>@handlecontract`.
 - A settings-only change reuses the current SubHandle and moves it forward with the settings UTxO.
 - The next ordinal must be derived from live chain state, not a repo-local counter.
 
 ## Artifact Contract
-The deployment workflow for this repo should emit:
+The deployment workflow for this repo currently emits:
 - `deployment-plan.json`
 - `summary.md`
 - `summary.json`
-- one or more `tx-XX.cbor` artifacts
-- optional observed-state snapshot artifacts for debugging and audit
 
-The canonical observed-state artifact should be JSON and should include:
+It does not emit `tx-XX.cbor` artifacts yet. Current rollout scope is drift detection plus approval-ready summary generation, with missing or legacy live handles tolerated so partially deployed networks still produce artifacts.
 
-```json
-{
-  "schema_version": 1,
-  "repo": "hal-minting-contracts",
-  "network": "preview",
-  "contract_slug": "hal-minting",
-  "current_script_hash": "<hash>",
-  "current_settings_utxo_ref": "<tx>#<ix>",
-  "current_subhandle": "hal-minting1@handlecontract",
-  "settings": {
-    "type": "hal_minting_settings",
-    "values": {}
-  },
-  "observed_at": "<iso8601>"
-}
-```
+The canonical observed-state artifact remains JSON, but for HAL it is multi-object:
+- seven contract script entries (`hal-mint-proxy`, `hal-mint`, `hal-minting-data`, `hal-orders-spend`, `hal-ref-spend-proxy`, `hal-ref-spend`, `hal-royalty-spend`)
+- three stable settings-handle entries (`hal-settings`, `hal-ref-spend-settings`, `hal-minting-data-settings`)
 
-If more than one transaction is required, the plan artifact must encode execution order and dependencies.
+Each contract entry carries the current script hash and current deployment SubHandle. Each settings entry carries the decoded handle-backed desired values without volatile UTxO refs.
 
 ## Human Approval Boundary
 Automation prepares deployment transactions and summaries.

@@ -40,3 +40,8 @@ They have 1 hour early access
 ## Smart Contract
 
 [Smart Contract Specification](https://github.com/golddydev/hal-mint/blob/main/smart-contract/smart-contract-spec.md)
+
+
+## Contract Deployment Automation
+
+This repo now carries committed desired-state YAML for `preview`, `preprod`, and `mainnet` under `deploy/`. The `Deployment Plan` workflow runs the repo-local planner against those files and uploads `summary.json`, `summary.md`, and `deployment-plan.json` artifacts.

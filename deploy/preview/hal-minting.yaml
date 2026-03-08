@@ -1,0 +1,61 @@
+schema_version: 1
+network: preview
+build_parameters:
+  mint_version: 0
+  admin_verification_key_hash: 4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1
+  orders_spend_randomizer: ""
+  royalty_spend_admin: 4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1
+settings:
+  hal_settings:
+    allowed_minter: 4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1
+    hal_nft_price: 30000000
+    payment_address: addr_test1qzj6ks8jsrvg4evsfmyd7vyhfugpdzz5a7hafm8uu55qjt3t2eyg4xqdp6nzhg4j88qkl9fyvex4ewe2zwmhe645ksxquzyvpf
+    minting_start_time: 1757631246160
+  ref_spend_settings:
+    ref_spend_admin: 4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1
+  minting_data:
+    mpt_root_hash: 64130d0cada93f6e61accbda58c11e1f171ddc38a5ba9728e1178e64c7ad12fd
+    whitelist_mpt_root_hash: 5a37927993f0c9906abcfa65ee46daa7cdab87829a1b3debdb173e66cd25c112
+contracts:
+  - contract_slug: hal-mint-proxy
+    script_type: hal_mint_proxy
+    deployment_handle_slug: halmntprxy
+    build:
+      contract_name: mint_proxy.mint
+      kind: minting_policy
+  - contract_slug: hal-mint
+    script_type: hal_mint
+    deployment_handle_slug: halmnt
+    build:
+      contract_name: mint.withdraw
+      kind: validator
+  - contract_slug: hal-minting-data
+    script_type: hal_minting_data
+    deployment_handle_slug: halmntdata
+    build:
+      contract_name: minting_data.spend
+      kind: validator
+  - contract_slug: hal-orders-spend
+    script_type: hal_orders_spend
+    deployment_handle_slug: halordspnd
+    build:
+      contract_name: orders_spend.spend
+      kind: validator
+  - contract_slug: hal-ref-spend-proxy
+    script_type: hal_ref_spend_proxy
+    deployment_handle_slug: halrfsdpx
+    build:
+      contract_name: ref_spend_proxy.spend
+      kind: validator
+  - contract_slug: hal-ref-spend
+    script_type: hal_ref_spend
+    deployment_handle_slug: halrefspnd
+    build:
+      contract_name: ref_spend.withdraw
+      kind: validator
+  - contract_slug: hal-royalty-spend
+    script_type: hal_royalty_spend
+    deployment_handle_slug: halroyspnd
+    build:
+      contract_name: royalty_spend.spend
+      kind: validator
