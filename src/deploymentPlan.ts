@@ -27,7 +27,6 @@ const SETTINGS_HANDLE = "hal@handle_settings";
 const REF_SPEND_SETTINGS_HANDLE = "hal_pz@handle_settings";
 const MINTING_DATA_HANDLE = "hal_root@handle_settings";
 const HANDLECONTRACT_NAMESPACE = "handlecontract";
-
 interface ExpectedContractState {
   contractSlug: string;
   scriptType: string;
@@ -479,6 +478,10 @@ export const buildDeploymentPlan = ({
   nextSubhandles: Record<string, string>;
 }) => {
   const expectedSettings = expectedSettingsState(desired, expectedContracts);
+  const mintingDataIgnoredPaths = desired.ignoredSettings
+    .filter((path) => path.startsWith("settings.minting_data."))
+    .map((path) => path.replace(/^settings\.minting_data\./, ""));
+  const mintingDataDiffIgnoredPaths = mintingDataIgnoredPaths.map((path) => `values.${path}`);
   const contractEntries = desired.contracts.map((contract) => {
     const expected = expectedContracts.find((item) => item.contractSlug === contract.contractSlug);
     const live = liveContracts.find((item) => item.contractSlug === contract.contractSlug);
@@ -487,6 +490,10 @@ export const buildDeploymentPlan = ({
     }
     const driftType = live.currentScriptHash === expected.expectedScriptHash ? "no_change" : "script_hash_only";
     const replacementSubhandle = nextSubhandles[contract.contractSlug] || null;
+    const plannedHandle =
+      driftType === "no_change"
+        ? live.currentSubhandle || desired.assignedHandles.scripts[contract.contractSlug] || null
+        : replacementSubhandle;
     return {
       contract_slug: contract.contractSlug,
       script_type: contract.scriptType,
@@ -497,7 +504,7 @@ export const buildDeploymentPlan = ({
       },
       subhandle: {
         action: driftType === "no_change" ? "reuse" : "allocate",
-        value: driftType === "no_change" ? live.currentSubhandle : replacementSubhandle,
+        value: plannedHandle,
         is_new: driftType !== "no_change",
       },
       expected_post_deploy_state: {
@@ -505,7 +512,11 @@ export const buildDeploymentPlan = ({
         network: desired.network,
         contract_slug: contract.contractSlug,
         expected_script_hash: expected.expectedScriptHash,
-        expected_subhandle: driftType === "no_change" ? live.currentSubhandle : replacementSubhandle,
+        expected_subhandle: plannedHandle,
+        assigned_handles: {
+          settings: [],
+          scripts: plannedHandle ? [plannedHandle] : [],
+        },
       },
     };
   });
@@ -518,14 +529,20 @@ export const buildDeploymentPlan = ({
         type: "hal_settings",
         diff_rows: diffRows(liveSettings.halSettings, expectedSettings.halSettings),
         desired_values: expectedSettings.halSettings.values,
+        ignored_paths: [],
       },
       expected_post_deploy_state: {
         repo: REPO_NAME,
         network: desired.network,
         contract_slug: "hal-settings",
+        assigned_handles: {
+          settings: desired.assignedHandles.settings.halSettings ? [desired.assignedHandles.settings.halSettings] : [],
+          scripts: [],
+        },
         settings: {
           type: "hal_settings",
           values: expectedSettings.halSettings.values,
+          ignored_paths: [],
         },
       },
     },
@@ -536,32 +553,44 @@ export const buildDeploymentPlan = ({
         type: "hal_ref_spend_settings",
         diff_rows: diffRows(liveSettings.refSpendSettings, expectedSettings.refSpendSettings),
         desired_values: expectedSettings.refSpendSettings.values,
+        ignored_paths: [],
       },
       expected_post_deploy_state: {
         repo: REPO_NAME,
         network: desired.network,
         contract_slug: "hal-ref-spend-settings",
+        assigned_handles: {
+          settings: desired.assignedHandles.settings.refSpendSettings ? [desired.assignedHandles.settings.refSpendSettings] : [],
+          scripts: [],
+        },
         settings: {
           type: "hal_ref_spend_settings",
           values: expectedSettings.refSpendSettings.values,
+          ignored_paths: [],
         },
       },
     },
     {
       contract_slug: "hal-minting-data-settings",
-      drift_type: settingsDriftType(liveSettings.mintingData, expectedSettings.mintingData),
+      drift_type: settingsDriftType(liveSettings.mintingData, expectedSettings.mintingData, mintingDataDiffIgnoredPaths),
       settings: {
         type: "hal_minting_data",
-        diff_rows: diffRows(liveSettings.mintingData, expectedSettings.mintingData),
+        diff_rows: diffRows(liveSettings.mintingData, expectedSettings.mintingData, mintingDataDiffIgnoredPaths),
         desired_values: expectedSettings.mintingData.values,
+        ignored_paths: mintingDataIgnoredPaths,
       },
       expected_post_deploy_state: {
         repo: REPO_NAME,
         network: desired.network,
         contract_slug: "hal-minting-data-settings",
+        assigned_handles: {
+          settings: desired.assignedHandles.settings.mintingData ? [desired.assignedHandles.settings.mintingData] : [],
+          scripts: [],
+        },
         settings: {
           type: "hal_minting_data",
           values: expectedSettings.mintingData.values,
+          ignored_paths: mintingDataIgnoredPaths,
         },
       },
     },
@@ -571,6 +600,8 @@ export const buildDeploymentPlan = ({
   const planId = crypto.createHash("sha256").update(JSON.stringify({
     network: desired.network,
     build_parameters: desired.buildParameters,
+    assigned_handles: desired.assignedHandles,
+    ignored_settings: desired.ignoredSettings,
     contracts: contractEntries.map((entry) => ({
       contract_slug: entry.contract_slug,
       current: entry.script_hashes.current,
@@ -632,17 +663,24 @@ export const buildDeploymentPlan = ({
   };
 };
 
-const settingsDriftType = (current: Record<string, unknown> | null, expected: Record<string, unknown>) =>
-  diffRows(current, expected).length > 0 ? "settings_only" : "no_change";
-
-const diffRows = (current: Record<string, unknown> | null, expected: Record<string, unknown>) => {
+const diffRows = (
+  current: Record<string, unknown> | null,
+  expected: Record<string, unknown>,
+  ignoredPaths: string[] = []
+) => {
   if (!current) {
     return [{ path: "missing_live_state", current: null, desired: expected }];
   }
   const rows: { path: string; current: unknown; desired: unknown }[] = [];
   collectDiffRows(rows, current, expected);
-  return rows;
+  return rows.filter((row) => !ignoredPaths.includes(row.path));
 };
+
+const settingsDriftType = (
+  current: Record<string, unknown> | null,
+  expected: Record<string, unknown>,
+  ignoredPaths: string[] = []
+) => (diffRows(current, expected, ignoredPaths).length > 0 ? "settings_only" : "no_change");
 
 const collectDiffRows = (
   rows: { path: string; current: unknown; desired: unknown }[],

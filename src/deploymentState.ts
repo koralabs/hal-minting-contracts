@@ -40,8 +40,17 @@ export interface DesiredContractTarget {
   };
 }
 
+interface DesiredAssignedHandles {
+  settings: {
+    halSettings: string | null;
+    refSpendSettings: string | null;
+    mintingData: string | null;
+  };
+  scripts: Record<string, string | null>;
+}
+
 export interface DesiredDeploymentState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   network: "preview" | "preprod" | "mainnet";
   buildParameters: {
     mintVersion: number;
@@ -64,6 +73,8 @@ export interface DesiredDeploymentState {
       whitelistMptRootHash: string;
     };
   };
+  assignedHandles: DesiredAssignedHandles;
+  ignoredSettings: string[];
   contracts: DesiredContractTarget[];
 }
 
@@ -98,8 +109,8 @@ export const parseDesiredDeploymentState = (
   }
 
   const schemaVersion = requireNumber(value, "schema_version", sourceLabel);
-  if (schemaVersion !== 1) {
-    throw new Error(`${sourceLabel} schema_version must equal 1`);
+  if (schemaVersion !== 2) {
+    throw new Error(`${sourceLabel} schema_version must equal 2`);
   }
 
   const network = requireString(value, "network", sourceLabel).toLowerCase();
@@ -109,6 +120,7 @@ export const parseDesiredDeploymentState = (
 
   const buildParameters = requireObject(value, "build_parameters", sourceLabel);
   const settings = requireObject(value, "settings", sourceLabel);
+  const assignedHandles = requireObject(value, "assigned_handles", sourceLabel);
   const contracts = requireArray(value, "contracts", sourceLabel).map((entry, index) =>
     parseContractTarget(entry, `${sourceLabel}.contracts[${index}]`)
   );
@@ -122,7 +134,7 @@ export const parseDesiredDeploymentState = (
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     network: network as "preview" | "preprod" | "mainnet",
     buildParameters: {
       mintVersion: requireNumber(buildParameters, "mint_version", `${sourceLabel}.build_parameters`),
@@ -135,6 +147,8 @@ export const parseDesiredDeploymentState = (
       refSpendSettings: parseRefSpendSettings(requireObject(settings, "ref_spend_settings", `${sourceLabel}.settings`), `${sourceLabel}.settings.ref_spend_settings`),
       mintingData: parseMintingDataSettings(requireObject(settings, "minting_data", `${sourceLabel}.settings`), `${sourceLabel}.settings.minting_data`),
     },
+    assignedHandles: parseAssignedHandles(assignedHandles, contracts, `${sourceLabel}.assigned_handles`),
+    ignoredSettings: requireStringArrayAllowEmpty(value, "ignored_settings", sourceLabel),
     contracts,
   };
 };
@@ -160,7 +174,7 @@ const parseContractTarget = (value: unknown, sourceLabel: string): DesiredContra
   return {
     contractSlug,
     scriptType,
-    deploymentHandleSlug: requireString(record, "deployment_handle_slug", sourceLabel),
+    deploymentHandleSlug: requireShortHandleSlug(record, "deployment_handle_slug", sourceLabel),
     build: {
       contractName: requireString(build, "contract_name", `${sourceLabel}.build`),
       kind: buildKind as "validator" | "minting_policy",
@@ -183,6 +197,28 @@ const parseMintingDataSettings = (value: Record<string, unknown>, sourceLabel: s
   mptRootHash: requireString(value, "mpt_root_hash", sourceLabel),
   whitelistMptRootHash: requireString(value, "whitelist_mpt_root_hash", sourceLabel),
 });
+
+const parseAssignedHandles = (
+  value: Record<string, unknown>,
+  contracts: DesiredContractTarget[],
+  sourceLabel: string
+): DesiredAssignedHandles => {
+  const settings = requireObject(value, "settings", sourceLabel);
+  const scripts = requireObject(value, "scripts", sourceLabel);
+  return {
+    settings: {
+      halSettings: requireNullableString(settings, "hal-settings", `${sourceLabel}.settings`),
+      refSpendSettings: requireNullableString(settings, "hal-ref-spend-settings", `${sourceLabel}.settings`),
+      mintingData: requireNullableString(settings, "hal-minting-data-settings", `${sourceLabel}.settings`),
+    },
+    scripts: Object.fromEntries(
+      contracts.map((contract) => [
+        contract.contractSlug,
+        requireNullableString(scripts, contract.contractSlug, `${sourceLabel}.scripts`),
+      ])
+    ),
+  };
+};
 
 const requireArray = (value: Record<string, unknown>, key: string, sourceLabel: string): unknown[] => {
   const resolved = value[key];
@@ -208,10 +244,45 @@ const requireString = (value: Record<string, unknown>, key: string, sourceLabel:
   return resolved;
 };
 
+const requireNullableString = (value: Record<string, unknown>, key: string, sourceLabel: string): string | null => {
+  const resolved = value[key];
+  if (resolved === null) {
+    return null;
+  }
+  if (typeof resolved !== "string") {
+    throw new Error(`${sourceLabel} must include string-or-null field \`${key}\``);
+  }
+  return resolved;
+};
+
 const requireNumber = (value: Record<string, unknown>, key: string, sourceLabel: string): number => {
   const resolved = value[key];
   if (typeof resolved !== "number" || Number.isNaN(resolved)) {
     throw new Error(`${sourceLabel} must include numeric field \`${key}\``);
+  }
+  return resolved;
+};
+
+const requireStringArrayAllowEmpty = (value: Record<string, unknown>, key: string, sourceLabel: string): string[] => {
+  const resolved = value[key];
+  if (!Array.isArray(resolved)) {
+    throw new Error(`${sourceLabel} must include array field \`${key}\``);
+  }
+  return resolved.map((item) => {
+    if (typeof item !== "string") {
+      throw new Error(`${sourceLabel} must include string array field \`${key}\``);
+    }
+    return item;
+  });
+};
+
+const requireShortHandleSlug = (value: Record<string, unknown>, key: string, sourceLabel: string): string => {
+  const resolved = requireString(value, key, sourceLabel);
+  if (resolved.length > 10) {
+    throw new Error(`${sourceLabel}.${key} must be 10 characters or fewer`);
+  }
+  if (resolved.includes("-") || resolved.includes("_")) {
+    throw new Error(`${sourceLabel}.${key} must not contain '-' or '_'`);
   }
   return resolved;
 };

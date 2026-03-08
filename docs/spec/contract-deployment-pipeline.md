@@ -23,7 +23,7 @@ deploy/mainnet/hal-minting.yaml
 Each file contains stable desired state only:
 
 ```yaml
-schema_version: 1
+schema_version: 2
 network: preview
 build_parameters:
   mint_version: 0
@@ -41,6 +41,16 @@ settings:
   minting_data:
     mpt_root_hash: <hex>
     whitelist_mpt_root_hash: <hex>
+assigned_handles:
+  settings:
+    hal-settings: hal@handle_settings
+    hal-ref-spend-settings: hal_pz@handle_settings
+    hal-minting-data-settings: hal_root@handle_settings
+  scripts:
+    hal-mint-proxy: hal_mnt_prxy@handle_contract
+ignored_settings:
+  - settings.minting_data.mpt_root_hash
+  - settings.minting_data.whitelist_mpt_root_hash
 contracts:
   - contract_slug: hal-mint-proxy
     script_type: hal_mint_proxy
@@ -57,6 +67,9 @@ Required stable fields:
 - `settings.hal_settings.*`
 - `settings.ref_spend_settings.ref_spend_admin`
 - `settings.minting_data.*`
+- `assigned_handles.settings.*`
+- `assigned_handles.scripts.*`
+- `ignored_settings`
 - `contracts[].contract_slug`
 - `contracts[].script_type`
 - `contracts[].deployment_handle_slug`
@@ -71,6 +84,9 @@ Observed-only fields that must not be committed into desired-state YAML:
 - `last_deployed_tx_hash`
 
 The initial bootstrap job may populate these files from current chain state, but it must strip live-only references before commit.
+
+`contracts[].deployment_handle_slug` values must be 10 characters or fewer and must not contain separators such as `-` or `_`.
+`assigned_handles` must record the currently assigned settings and script handles for each network, including `null` where a settings handle is not live yet.
 
 ## Drift Detection
 Deployment automation should:

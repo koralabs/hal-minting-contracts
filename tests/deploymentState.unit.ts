@@ -11,13 +11,20 @@ describe("hal deployment state", () => {
     expect(preview.network).toBe("preview");
     expect(preprod.network).toBe("preprod");
     expect(mainnet.network).toBe("mainnet");
+    expect(preview.schemaVersion).toBe(2);
     expect(preview.contracts).toHaveLength(7);
+    expect(preview.assignedHandles.settings.halSettings).toBe("hal@handle_settings");
+    expect(preview.assignedHandles.settings.refSpendSettings).toBeNull();
+    expect(preview.ignoredSettings).toEqual([
+      "settings.minting_data.mpt_root_hash",
+      "settings.minting_data.whitelist_mpt_root_hash",
+    ]);
   });
 
   it("rejects observed-only fields in desired-state YAML", () => {
     expect(() =>
       parseDesiredDeploymentState(`
-schema_version: 1
+schema_version: 2
 network: preview
 current_script_hash: deadbeef
 build_parameters:
@@ -36,6 +43,14 @@ settings:
   minting_data:
     mpt_root_hash: ee
     whitelist_mpt_root_hash: ff
+assigned_handles:
+  settings:
+    hal-settings: hal@handle_settings
+    hal-ref-spend-settings: null
+    hal-minting-data-settings: hal_root@handle_settings
+  scripts:
+    hal-mint-proxy: hal_mnt_prxy@handle_contract
+ignored_settings: []
 contracts:
   - contract_slug: hal-mint-proxy
     script_type: hal_mint_proxy

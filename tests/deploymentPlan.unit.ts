@@ -10,7 +10,7 @@ import {
 import type { DesiredDeploymentState } from "../src/deploymentState.js";
 
 const desiredState: DesiredDeploymentState = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   network: "preview",
   buildParameters: {
     mintVersion: 0,
@@ -33,6 +33,21 @@ const desiredState: DesiredDeploymentState = {
       whitelistMptRootHash: "root-b",
     },
   },
+  assignedHandles: {
+    settings: {
+      halSettings: "hal@handle_settings",
+      refSpendSettings: null,
+      mintingData: "hal_root@handle_settings",
+    },
+    scripts: {
+      "hal-mint-proxy": "hal_mnt_prxy@handle_contract",
+      "hal-mint": "hal_mnt@handle_contract",
+    },
+  },
+  ignoredSettings: [
+    "settings.minting_data.mpt_root_hash",
+    "settings.minting_data.whitelist_mpt_root_hash",
+  ],
   contracts: [
     {
       contractSlug: "hal-mint-proxy",
@@ -165,6 +180,15 @@ describe("hal deployment plan", () => {
     ]);
     expect(plan.summaryJson.contracts[0].subhandle.value).toBe("halmntprxy1@handlecontract");
     expect(plan.summaryJson.contracts[2].drift_type).toBe("settings_only");
+    expect(plan.summaryJson.contracts[2].expected_post_deploy_state.assigned_handles).toEqual({
+      settings: ["hal@handle_settings"],
+      scripts: [],
+    });
+    expect(plan.summaryJson.contracts[4].drift_type).toBe("no_change");
+    expect(plan.summaryJson.contracts[4].settings.ignored_paths).toEqual([
+      "mpt_root_hash",
+      "whitelist_mpt_root_hash",
+    ]);
     expect(plan.summaryMarkdown).toContain("hal-settings");
   });
 

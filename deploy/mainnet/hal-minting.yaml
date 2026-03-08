@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 network: mainnet
 build_parameters:
   mint_version: 0
@@ -16,6 +16,22 @@ settings:
   minting_data:
     mpt_root_hash: 37c5aefffdbf4f0ffd9721dcfab18ba83bff60bbcbd521a49b873b76c801ae5a
     whitelist_mpt_root_hash: a35f44cd78d287a67e1ba020d8cdf4ec6d1307cedbf226ece28de1354668cba4
+assigned_handles:
+  settings:
+    hal-settings: hal@handle_settings
+    hal-ref-spend-settings: hal_pz@handle_settings
+    hal-minting-data-settings: hal_root@handle_settings
+  scripts:
+    hal-mint-proxy: hal_mnt_prxy@handle_contract
+    hal-mint: hal_mnt@handle_contract
+    hal-minting-data: hal_mnt_data@handle_contract
+    hal-orders-spend: hal_ord_spnd@handle_contract
+    hal-ref-spend-proxy: hal_rf_sd_px@handle_contract
+    hal-ref-spend: hal_ref_spnd@handle_contract
+    hal-royalty-spend: hal_roy_spnd@handle_contract
+ignored_settings:
+  - settings.minting_data.mpt_root_hash
+  - settings.minting_data.whitelist_mpt_root_hash
 contracts:
   - contract_slug: hal-mint-proxy
     script_type: hal_mint_proxy
