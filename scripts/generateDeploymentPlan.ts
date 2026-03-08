@@ -34,11 +34,16 @@ const main = async () => {
   const desired = await loadDesiredDeploymentState(args.desired);
   const userAgent = (process.env.KORA_USER_AGENT || "kora-contract-deployments/1.0").trim();
   const expectedContracts = buildExpectedContractStates(desired);
-  const [liveContracts, liveSettings, nextSubhandles] = await Promise.all([
+  const [liveContracts, liveSettings] = await Promise.all([
     fetchLiveContractStates({ network: desired.network, contracts: desired.contracts, userAgent }),
     fetchLiveSettingsState({ network: desired.network, userAgent }),
-    discoverNextContractSubhandles({ network: desired.network, contracts: desired.contracts, userAgent }),
   ]);
+  const nextSubhandles = await discoverNextContractSubhandles({
+    network: desired.network,
+    contracts: desired.contracts,
+    liveContracts,
+    userAgent,
+  });
   const plan = buildDeploymentPlan({
     desired,
     expectedContracts,

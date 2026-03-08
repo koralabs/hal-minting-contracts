@@ -5,22 +5,22 @@ import YAML from "yaml";
 const ALLOWED_NETWORKS = new Set(["preview", "preprod", "mainnet"]);
 const ALLOWED_BUILD_KINDS = new Set(["validator", "minting_policy"]);
 const ALLOWED_SCRIPT_TYPES = new Set([
-  "hal_mint_proxy",
-  "hal_mint",
-  "hal_minting_data",
-  "hal_orders_spend",
-  "hal_ref_spend_proxy",
-  "hal_ref_spend",
-  "hal_royalty_spend",
+  "halmntprx",
+  "halmnt",
+  "halmntmpt",
+  "halord",
+  "halrefprx",
+  "halref",
+  "halroy",
 ]);
 const ALLOWED_CONTRACT_SLUGS = new Set([
-  "hal-mint-proxy",
-  "hal-mint",
-  "hal-minting-data",
-  "hal-orders-spend",
-  "hal-ref-spend-proxy",
-  "hal-ref-spend",
-  "hal-royalty-spend",
+  "halmntprx",
+  "halmnt",
+  "halmntmpt",
+  "halord",
+  "halrefprx",
+  "halref",
+  "halroy",
 ]);
 const OBSERVED_ONLY_FIELDS = new Set([
   "current_script_hash",
@@ -33,6 +33,7 @@ const OBSERVED_ONLY_FIELDS = new Set([
 export interface DesiredContractTarget {
   contractSlug: string;
   scriptType: string;
+  oldScriptType: string | null;
   deploymentHandleSlug: string;
   build: {
     contractName: string;
@@ -158,13 +159,19 @@ const parseContractTarget = (value: unknown, sourceLabel: string): DesiredContra
     throw new Error(`${sourceLabel} must be an object`);
   }
   const record = value as Record<string, unknown>;
-  const contractSlug = requireString(record, "contract_slug", sourceLabel);
+  const contractSlug = requireShortHandleSlug(record, "contract_slug", sourceLabel);
   if (!ALLOWED_CONTRACT_SLUGS.has(contractSlug)) {
     throw new Error(`${sourceLabel}.contract_slug is not supported`);
   }
-  const scriptType = requireString(record, "script_type", sourceLabel);
+  const scriptType = requireShortHandleSlug(record, "script_type", sourceLabel);
   if (!ALLOWED_SCRIPT_TYPES.has(scriptType)) {
     throw new Error(`${sourceLabel}.script_type is not supported`);
+  }
+  const deploymentHandleSlug = requireShortHandleSlug(record, "deployment_handle_slug", sourceLabel);
+  if (contractSlug !== scriptType || scriptType !== deploymentHandleSlug) {
+    throw new Error(
+      `${sourceLabel} contract_slug, script_type, and deployment_handle_slug must match`
+    );
   }
   const build = requireObject(record, "build", sourceLabel);
   const buildKind = requireString(build, "kind", `${sourceLabel}.build`);
@@ -174,7 +181,8 @@ const parseContractTarget = (value: unknown, sourceLabel: string): DesiredContra
   return {
     contractSlug,
     scriptType,
-    deploymentHandleSlug: requireShortHandleSlug(record, "deployment_handle_slug", sourceLabel),
+    oldScriptType: requireOptionalString(record, "old_script_type", sourceLabel),
+    deploymentHandleSlug,
     build: {
       contractName: requireString(build, "contract_name", `${sourceLabel}.build`),
       kind: buildKind as "validator" | "minting_policy",
@@ -208,8 +216,8 @@ const parseAssignedHandles = (
   return {
     settings: {
       halSettings: requireNullableString(settings, "hal-settings", `${sourceLabel}.settings`),
-      refSpendSettings: requireNullableString(settings, "hal-ref-spend-settings", `${sourceLabel}.settings`),
-      mintingData: requireNullableString(settings, "hal-minting-data-settings", `${sourceLabel}.settings`),
+      refSpendSettings: requireNullableString(settings, "halref-settings", `${sourceLabel}.settings`),
+      mintingData: requireNullableString(settings, "halmntmpt-settings", `${sourceLabel}.settings`),
     },
     scripts: Object.fromEntries(
       contracts.map((contract) => [
@@ -285,4 +293,19 @@ const requireShortHandleSlug = (value: Record<string, unknown>, key: string, sou
     throw new Error(`${sourceLabel}.${key} must not contain '-' or '_'`);
   }
   return resolved;
+};
+
+const requireOptionalString = (
+  value: Record<string, unknown>,
+  key: string,
+  sourceLabel: string
+): string | null => {
+  const resolved = value[key];
+  if (resolved === undefined || resolved === null) {
+    return null;
+  }
+  if (typeof resolved !== "string" || resolved.trim() === "") {
+    throw new Error(`${sourceLabel} must include string field \`${key}\``);
+  }
+  return resolved.trim();
 };

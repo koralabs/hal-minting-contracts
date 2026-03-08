@@ -187,7 +187,7 @@ const fetchAllDeployedScripts = async (
   blockfrostV0Client: BlockfrostV0Client
 ): Promise<Result<DeployedScripts, string>> => {
   try {
-    // "mint_proxy.mint"
+    // "halmntprx.mint"
     const mintProxyScriptDetails = await fetchDeployedScript(
       ScriptType.HAL_MINT_PROXY
     );
@@ -205,7 +205,7 @@ const fetchAllDeployedScripts = async (
         decodeUplcProgramV2FromCbor(mintProxyScriptDetails.unoptimizedCbor)
       );
 
-    // "mint.withdraw"
+    // "halmnt.withdraw"
     const mintScriptDetails = await fetchDeployedScript(ScriptType.HAL_MINT);
     invariant(mintScriptDetails.refScriptUtxo, "Mint has no Ref script UTxO");
     const mintScriptTxInput = await blockfrostV0Client.getUtxo(
@@ -218,7 +218,7 @@ const fetchAllDeployedScripts = async (
         decodeUplcProgramV2FromCbor(mintScriptDetails.unoptimizedCbor)
       );
 
-    // "minting_data.spend"
+    // "halmntmpt.spend"
     const mintingDataScriptDetails = await fetchDeployedScript(
       ScriptType.HAL_MINTING_DATA
     );
@@ -236,7 +236,7 @@ const fetchAllDeployedScripts = async (
         decodeUplcProgramV2FromCbor(mintingDataScriptDetails.unoptimizedCbor)
       );
 
-    // "orders_spend.spend"
+    // "halord.spend"
     const ordersSpendScriptDetails = await fetchDeployedScript(
       ScriptType.HAL_ORDERS_SPEND
     );
@@ -254,7 +254,7 @@ const fetchAllDeployedScripts = async (
         decodeUplcProgramV2FromCbor(ordersSpendScriptDetails.unoptimizedCbor)
       );
 
-    // "ref_spend_proxy.spend"
+    // "halrefprx.spend"
     const refSpendProxyScriptDetails = await fetchDeployedScript(
       ScriptType.HAL_REF_SPEND_PROXY
     );
@@ -272,7 +272,7 @@ const fetchAllDeployedScripts = async (
         decodeUplcProgramV2FromCbor(refSpendProxyScriptDetails.unoptimizedCbor)
       );
 
-    // "ref_spend.withdraw"
+    // "halref.withdraw"
     const refSpendScriptDetails = await fetchDeployedScript(
       ScriptType.HAL_REF_SPEND
     );
@@ -290,7 +290,7 @@ const fetchAllDeployedScripts = async (
         decodeUplcProgramV2FromCbor(refSpendScriptDetails.unoptimizedCbor)
       );
 
-    // "royalty_spend.spend"
+    // "halroy.spend"
     const royaltySpendScriptDetails = await fetchDeployedScript(
       ScriptType.HAL_ROYALTY_SPEND
     );

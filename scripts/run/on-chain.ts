@@ -283,13 +283,13 @@ const doDeployActions = async () => {
             });
             await fs.writeFile(filepath, JSON.stringify(deployData));
 
-            if (contract === "mint_proxy.mint") {
+            if (contract === "halmntprx.mint") {
               console.log(
                 "\n\n------- Be careful with Mint Proxy Mint Script -------\n"
               );
               console.log("!!! THIS WILL CHANGE POLICY ID !!!");
               console.log("\n");
-            } else if (contract === "mint.withdraw") {
+            } else if (contract === "halmnt.withdraw") {
               console.log(
                 "\n\n------- After Deploying Mint Withdraw Script -------\n"
               );
@@ -297,7 +297,7 @@ const doDeployActions = async () => {
               console.log("\n");
               console.log("!!! Register Staking Addresses !!!");
               console.log("\n");
-            } else if (contract === "minting_data.spend") {
+            } else if (contract === "halmntmpt.spend") {
               console.log(
                 "\n\n------- After Deploying Minting Data Spend Script -------\n"
               );

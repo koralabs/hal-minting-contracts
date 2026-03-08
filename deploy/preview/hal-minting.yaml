@@ -19,59 +19,66 @@ settings:
 assigned_handles:
   settings:
     hal-settings: hal@handle_settings
-    hal-ref-spend-settings: null
-    hal-minting-data-settings: hal_root@handle_settings
+    halref-settings: null
+    halmntmpt-settings: hal_root@handle_settings
   scripts:
-    hal-mint-proxy: hal_mnt_prxy@handle_contract
-    hal-mint: hal_mnt@handle_contract
-    hal-minting-data: hal_mnt_data@handle_contract
-    hal-orders-spend: hal_ord_spnd@handle_contract
-    hal-ref-spend-proxy: hal_rf_sd_px@handle_contract
-    hal-ref-spend: hal_ref_spnd@handle_contract
-    hal-royalty-spend: hal_roy_spnd@handle_contract
+    halmntprx: hal_mnt_prxy@handle_contract
+    halmnt: hal_mnt@handle_contract
+    halmntmpt: hal_mnt_data@handle_contract
+    halord: hal_ord_spnd@handle_contract
+    halrefprx: hal_rf_sd_px@handle_contract
+    halref: hal_ref_spnd@handle_contract
+    halroy: hal_roy_spnd@handle_contract
 ignored_settings:
   - settings.minting_data.mpt_root_hash
   - settings.minting_data.whitelist_mpt_root_hash
 contracts:
-  - contract_slug: hal-mint-proxy
-    script_type: hal_mint_proxy
-    deployment_handle_slug: halmntprxy
+  - contract_slug: halmntprx
+    script_type: halmntprx
+    old_script_type: hal_mint_proxy
+    deployment_handle_slug: halmntprx
     build:
-      contract_name: mint_proxy.mint
+      contract_name: halmntprx.mint
       kind: minting_policy
-  - contract_slug: hal-mint
-    script_type: hal_mint
+  - contract_slug: halmnt
+    script_type: halmnt
+    old_script_type: hal_mint
     deployment_handle_slug: halmnt
     build:
-      contract_name: mint.withdraw
+      contract_name: halmnt.withdraw
       kind: validator
-  - contract_slug: hal-minting-data
-    script_type: hal_minting_data
-    deployment_handle_slug: halmntdata
+  - contract_slug: halmntmpt
+    script_type: halmntmpt
+    old_script_type: hal_minting_data
+    deployment_handle_slug: halmntmpt
     build:
-      contract_name: minting_data.spend
+      contract_name: halmntmpt.spend
       kind: validator
-  - contract_slug: hal-orders-spend
-    script_type: hal_orders_spend
-    deployment_handle_slug: halordspnd
+  - contract_slug: halord
+    script_type: halord
+    old_script_type: hal_orders_spend
+    deployment_handle_slug: halord
     build:
-      contract_name: orders_spend.spend
+      contract_name: halord.spend
       kind: validator
-  - contract_slug: hal-ref-spend-proxy
-    script_type: hal_ref_spend_proxy
-    deployment_handle_slug: halrfsdpx
+  - contract_slug: halrefprx
+    script_type: halrefprx
+    old_script_type: hal_ref_spend_proxy
+    deployment_handle_slug: halrefprx
     build:
-      contract_name: ref_spend_proxy.spend
+      contract_name: halrefprx.spend
       kind: validator
-  - contract_slug: hal-ref-spend
-    script_type: hal_ref_spend
-    deployment_handle_slug: halrefspnd
+  - contract_slug: halref
+    script_type: halref
+    old_script_type: hal_ref_spend
+    deployment_handle_slug: halref
     build:
-      contract_name: ref_spend.withdraw
+      contract_name: halref.withdraw
       kind: validator
-  - contract_slug: hal-royalty-spend
-    script_type: hal_royalty_spend
-    deployment_handle_slug: halroyspnd
+  - contract_slug: halroy
+    script_type: halroy
+    old_script_type: hal_royalty_spend
+    deployment_handle_slug: halroy
     build:
-      contract_name: royalty_spend.spend
+      contract_name: halroy.spend
       kind: validator

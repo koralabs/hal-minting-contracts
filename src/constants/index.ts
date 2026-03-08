@@ -23,13 +23,13 @@ export const PREFIX_222 = "000de140";
 
 // Contract names
 export enum CONTRACT_NAME {
-  MINT_PROXY_MINT = "mint_proxy.mint",
-  MINT_WITHDRAW = "mint.withdraw",
-  MINTING_DATA_SPEND = "minting_data.spend",
-  ORDERS_SPEND_SPEND = "orders_spend.spend",
-  REF_SPEND_PROXY_SPEND = "ref_spend_proxy.spend",
-  REF_SPEND_WITHDRAW = "ref_spend.withdraw",
-  ROYALTY_SPEND_SPEND = "royalty_spend.spend",
+  MINT_PROXY_MINT = "halmntprx.mint",
+  MINT_WITHDRAW = "halmnt.withdraw",
+  MINTING_DATA_SPEND = "halmntmpt.spend",
+  ORDERS_SPEND_SPEND = "halord.spend",
+  REF_SPEND_PROXY_SPEND = "halrefprx.spend",
+  REF_SPEND_WITHDRAW = "halref.withdraw",
+  ROYALTY_SPEND_SPEND = "halroy.spend",
 }
 
 export const LEGACY_POLICY_ID =

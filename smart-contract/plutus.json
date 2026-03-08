@@ -1,7 +1,7 @@
 {
   "preamble": {
-    "title": "koralabs/hal-mint-smart-contract",
-    "description": "Aiken contracts for project 'koralabs/hal-mint-smart-contract'",
+    "title": "koralabs/halmnt-smart-contract",
+    "description": "Aiken contracts for project 'koralabs/halmnt-smart-contract'",
     "version": "0.0.0",
     "plutusVersion": "v2",
     "compiler": {

@@ -40,8 +40,8 @@ const desiredState: DesiredDeploymentState = {
       mintingData: "hal_root@handle_settings",
     },
     scripts: {
-      "hal-mint-proxy": "hal_mnt_prxy@handle_contract",
-      "hal-mint": "hal_mnt@handle_contract",
+      "halmntprx": "hal_mnt_prxy@handle_contract",
+      "halmnt": "hal_mnt@handle_contract",
     },
   },
   ignoredSettings: [
@@ -50,16 +50,18 @@ const desiredState: DesiredDeploymentState = {
   ],
   contracts: [
     {
-      contractSlug: "hal-mint-proxy",
-      scriptType: "hal_mint_proxy",
-      deploymentHandleSlug: "halmntprxy",
-      build: { contractName: "mint_proxy.mint", kind: "minting_policy" },
+      contractSlug: "halmntprx",
+      scriptType: "halmntprx",
+      oldScriptType: "hal_mint_proxy",
+      deploymentHandleSlug: "halmntprx",
+      build: { contractName: "halmntprx.mint", kind: "minting_policy" },
     },
     {
-      contractSlug: "hal-mint",
-      scriptType: "hal_mint",
+      contractSlug: "halmnt",
+      scriptType: "halmnt",
+      oldScriptType: "hal_mint",
       deploymentHandleSlug: "halmnt",
-      build: { contractName: "mint.withdraw", kind: "validator" },
+      build: { contractName: "halmnt.withdraw", kind: "validator" },
     },
   ],
 };
@@ -80,8 +82,8 @@ describe("hal deployment plan", () => {
     );
 
     expect(expected).toEqual([
-      { contractSlug: "hal-mint-proxy", scriptType: "hal_mint_proxy", expectedScriptHash: "aa" },
-      { contractSlug: "hal-mint", scriptType: "hal_mint", expectedScriptHash: "bb" },
+      { contractSlug: "halmntprx", scriptType: "halmntprx", expectedScriptHash: "aa" },
+      { contractSlug: "halmnt", scriptType: "halmnt", expectedScriptHash: "bb" },
     ]);
   });
 
@@ -94,13 +96,13 @@ describe("hal deployment plan", () => {
         if (String(url).includes("hal_mint_proxy")) {
           return new Response(null, { status: 404 });
         }
-        return new Response(JSON.stringify({ validatorHash: "bb", handle: "hal-mint1@handlecontract" }), { status: 200 });
+        return new Response(JSON.stringify({ validatorHash: "bb", handle: "halmnt1@handlecontract" }), { status: 200 });
       }) as typeof fetch,
     });
 
     expect(live).toEqual([
-      { contractSlug: "hal-mint-proxy", scriptType: "hal_mint_proxy", currentScriptHash: null, currentSubhandle: null },
-      { contractSlug: "hal-mint", scriptType: "hal_mint", currentScriptHash: "bb", currentSubhandle: "hal-mint1@handlecontract" },
+      { contractSlug: "halmntprx", scriptType: "halmntprx", currentScriptHash: null, currentSubhandle: null },
+      { contractSlug: "halmnt", scriptType: "halmnt", currentScriptHash: "bb", currentSubhandle: "halmnt1@handlecontract" },
     ]);
   });
 
@@ -143,17 +145,17 @@ describe("hal deployment plan", () => {
     const plan = buildDeploymentPlan({
       desired: desiredState,
       expectedContracts: [
-        { contractSlug: "hal-mint-proxy", scriptType: "hal_mint_proxy", expectedScriptHash: "aa" },
-        { contractSlug: "hal-mint", scriptType: "hal_mint", expectedScriptHash: "bb" },
-        { contractSlug: "hal-minting-data", scriptType: "hal_minting_data", expectedScriptHash: "cc" },
-        { contractSlug: "hal-orders-spend", scriptType: "hal_orders_spend", expectedScriptHash: "dd" },
-        { contractSlug: "hal-ref-spend-proxy", scriptType: "hal_ref_spend_proxy", expectedScriptHash: "ee" },
-        { contractSlug: "hal-ref-spend", scriptType: "hal_ref_spend", expectedScriptHash: "ff" },
-        { contractSlug: "hal-royalty-spend", scriptType: "hal_royalty_spend", expectedScriptHash: "gg" },
+        { contractSlug: "halmntprx", scriptType: "halmntprx", expectedScriptHash: "aa" },
+        { contractSlug: "halmnt", scriptType: "halmnt", expectedScriptHash: "bb" },
+        { contractSlug: "halmntmpt", scriptType: "halmntmpt", expectedScriptHash: "cc" },
+        { contractSlug: "halord", scriptType: "halord", expectedScriptHash: "dd" },
+        { contractSlug: "halrefprx", scriptType: "halrefprx", expectedScriptHash: "ee" },
+        { contractSlug: "halref", scriptType: "halref", expectedScriptHash: "ff" },
+        { contractSlug: "halroy", scriptType: "halroy", expectedScriptHash: "gg" },
       ],
       liveContracts: [
-        { contractSlug: "hal-mint-proxy", scriptType: "hal_mint_proxy", currentScriptHash: null, currentSubhandle: null },
-        { contractSlug: "hal-mint", scriptType: "hal_mint", currentScriptHash: "bb", currentSubhandle: "hal-mint1@handlecontract" },
+        { contractSlug: "halmntprx", scriptType: "halmntprx", currentScriptHash: null, currentSubhandle: null },
+        { contractSlug: "halmnt", scriptType: "halmnt", currentScriptHash: "bb", currentSubhandle: "halmnt1@handlecontract" },
       ],
       liveSettings: {
         halSettings: null,
@@ -161,24 +163,24 @@ describe("hal deployment plan", () => {
         mintingData: { values: { mpt_root_hash: "root-a", whitelist_mpt_root_hash: "mismatch" } },
       },
       nextSubhandles: {
-        "hal-mint-proxy": "halmntprxy1@handlecontract",
-        "hal-mint": "halmnt2@handlecontract",
-        "hal-minting-data": "halmntdata1@handlecontract",
-        "hal-orders-spend": "halordspnd1@handlecontract",
-        "hal-ref-spend-proxy": "halrfsdpx1@handlecontract",
-        "hal-ref-spend": "halrefspnd1@handlecontract",
-        "hal-royalty-spend": "halroyspnd1@handlecontract",
+        "halmntprx": "halmntprx1@handlecontract",
+        "halmnt": "halmnt2@handlecontract",
+        "halmntmpt": "halmntmpt1@handlecontract",
+        "halord": "halord1@handlecontract",
+        "halrefprx": "halrefprx1@handlecontract",
+        "halref": "halref1@handlecontract",
+        "halroy": "halroy1@handlecontract",
       },
     });
 
     expect(plan.summaryJson.contracts.map((item) => item.contract_slug)).toEqual([
-      "hal-mint-proxy",
-      "hal-mint",
+      "halmntprx",
+      "halmnt",
       "hal-settings",
-      "hal-ref-spend-settings",
-      "hal-minting-data-settings",
+      "halref-settings",
+      "halmntmpt-settings",
     ]);
-    expect(plan.summaryJson.contracts[0].subhandle.value).toBe("halmntprxy1@handlecontract");
+    expect(plan.summaryJson.contracts[0].subhandle.value).toBe("halmntprx1@handlecontract");
     expect(plan.summaryJson.contracts[2].drift_type).toBe("settings_only");
     expect(plan.summaryJson.contracts[2].expected_post_deploy_state.assigned_handles).toEqual({
       settings: ["hal@handle_settings"],
@@ -196,19 +198,25 @@ describe("hal deployment plan", () => {
     const subhandles = await discoverNextContractSubhandles({
       network: "preview",
       contracts: desiredState.contracts,
+      liveContracts: [
+        { contractSlug: "halmntprx", scriptType: "halmntprx", currentScriptHash: "aa", currentSubhandle: "halmntprx1@handlecontract" },
+        { contractSlug: "halmnt", scriptType: "halmnt", currentScriptHash: "bb", currentSubhandle: "legacy@hal_scripts" },
+      ],
       userAgent: "codex-test",
       fetchFn: vi.fn(async (url) => {
         const target = String(url);
-        if (target.includes("halmntprxy1%40handlecontract")) return new Response(null, { status: 200 });
-        if (target.includes("halmntprxy2%40handlecontract")) return new Response(null, { status: 404 });
-        if (target.includes("halmnt1%40handlecontract")) return new Response(null, { status: 404 });
+        if (target.includes("halmntprx1%40handlecontract")) return new Response(null, { status: 200 });
+        if (target.includes("halmntprx2%40handlecontract")) return new Response(null, { status: 200 });
+        if (target.includes("halmntprx3%40handlecontract")) return new Response(null, { status: 404 });
+        if (target.includes("halmnt1%40handlecontract")) return new Response(null, { status: 200 });
+        if (target.includes("halmnt2%40handlecontract")) return new Response(null, { status: 404 });
         throw new Error(`unexpected url ${target}`);
       }) as typeof fetch,
     });
 
     expect(subhandles).toEqual({
-      "hal-mint-proxy": "halmntprxy2@handlecontract",
-      "hal-mint": "halmnt1@handlecontract",
+      "halmntprx": "halmntprx2@handlecontract",
+      "halmnt": "halmnt1@handlecontract",
     });
   });
 });

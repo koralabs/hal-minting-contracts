@@ -12,43 +12,12 @@ on:
 
 jobs:
   deployment-plan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      DESIRED_PATH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.desired_path || '' }}
-      KORA_USER_AGENT: ${{ vars.KORA_USER_AGENT }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.13
-          check-latest: true
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate deployment artifacts
-        run: |
-          set -eu
-          mkdir -p artifacts
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            desired_paths=("$DESIRED_PATH")
-          else
-            mapfile -t desired_paths < <(find deploy -mindepth 2 -maxdepth 2 -name '*.yaml' | sort)
-          fi
-
-          for desired_path in "${desired_paths[@]}"; do
-            network="$(basename "$(dirname "$desired_path")")"
-            npx tsx scripts/generateDeploymentPlan.ts --desired "$desired_path" --artifacts-dir "artifacts/$network"
-          done
-
-      - name: Upload deployment plan artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-plan-${{ github.run_id }}
-          path: artifacts
-          if-no-files-found: error
-          retention-days: 7
+    uses: koralabs/adahandle-deployments/.github/workflows/contract-deployment-plan.yml@master
+    secrets: inherit
+    with:
+      desired_path: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.desired_path || '' }}
+      node_version: "22.13"
+      timeout_minutes: 15
+      kora_user_agent: ${{ vars.KORA_USER_AGENT }}
+      install_command: npm ci
+      planner_command: npx tsx scripts/generateDeploymentPlan.ts

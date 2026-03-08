@@ -1,8 +1,8 @@
 export default {
   preamble: {
-    title: "koralabs/hal-mint-smart-contract",
+    title: "koralabs/halmnt-smart-contract",
     description:
-      "Aiken contracts for project 'koralabs/hal-mint-smart-contract'",
+      "Aiken contracts for project 'koralabs/halmnt-smart-contract'",
     version: "0.0.0",
     plutusVersion: "v2",
     compiler: {
@@ -13,7 +13,7 @@ export default {
   },
   validators: [
     {
-      title: "mint.withdraw",
+      title: "halmnt.withdraw",
       redeemer: {
         title: "redeemer",
         schema: {
@@ -25,7 +25,7 @@ export default {
       hash: "e5925902ee9fda18edea8637d165fdd21dc2e384457d4a823d7ec6a6",
     },
     {
-      title: "mint_proxy.mint",
+      title: "halmntprx.mint",
       redeemer: {
         title: "_r",
         schema: {
@@ -45,7 +45,7 @@ export default {
       hash: "3ed9bed76005aa56699cd3b7d73b743dcded221c3d101522b00677ec",
     },
     {
-      title: "minting_data.spend",
+      title: "halmntmpt.spend",
       datum: {
         title: "_minting_data",
         schema: {
@@ -71,7 +71,7 @@ export default {
       hash: "6d7a263583ca47274ab0b97264f47b1786d06c9bcb23b6662f073a55",
     },
     {
-      title: "orders_spend.spend",
+      title: "halord.spend",
       datum: {
         title: "datum",
         schema: {
@@ -103,7 +103,7 @@ export default {
       hash: "687d962b80e5a8616358a6461fa7fd5297fcc6c452c0f239dbbd9dcd",
     },
     {
-      title: "ref_spend.withdraw",
+      title: "halref.withdraw",
       redeemer: {
         title: "_redeemer",
         schema: {
@@ -115,7 +115,7 @@ export default {
       hash: "7d2baa21dd38302c8db36101ee1d94855d6e804958100b559992e24e",
     },
     {
-      title: "ref_spend_proxy.spend",
+      title: "halrefprx.spend",
       datum: {
         title: "_datum",
         schema: {
@@ -133,7 +133,7 @@ export default {
       hash: "ae928026882da7482a5152afeb9e76d325a9da089b1d4ab16e8af24a",
     },
     {
-      title: "royalty_spend.spend",
+      title: "halroy.spend",
       datum: {
         title: "_datum",
         schema: {

@@ -46,17 +46,18 @@ settings:
 assigned_handles:
   settings:
     hal-settings: hal@handle_settings
-    hal-ref-spend-settings: null
-    hal-minting-data-settings: hal_root@handle_settings
+    halref-settings: null
+    halmntmpt-settings: hal_root@handle_settings
   scripts:
-    hal-mint-proxy: hal_mnt_prxy@handle_contract
+    halmntprx: hal_mnt_prxy@handle_contract
 ignored_settings: []
 contracts:
-  - contract_slug: hal-mint-proxy
-    script_type: hal_mint_proxy
-    deployment_handle_slug: halmntprxy
+  - contract_slug: halmntprx
+    script_type: halmntprx
+    old_script_type: hal_mint_proxy
+    deployment_handle_slug: halmntprx
     build:
-      contract_name: mint_proxy.mint
+      contract_name: halmntprx.mint
       kind: minting_policy
 `)
     ).toThrow(/must not include observed-only field `current_script_hash`/);

@@ -5,6 +5,11 @@ This repo owns the desired on-chain deployment state for H.A.L. minting contract
 
 The repo should define what ought to be live on `preview`, `preprod`, and `mainnet`. It should not be treated as the storage location for volatile live references such as current settings UTxO refs.
 
+Canonical slug naming for this repo follows the shared rule in `kora-bot/docs/spec/contract-deployment-pipeline.md`:
+- `<app><[ord|mnt|ref|roy]><[mpt]>`
+- this repo currently uses `halmntprx`, `halmntmpt`, `halmnt`, `halord`, `halrefprx`, `halref`, and `halroy`
+- `old_script_type` is legacy migration-only
+
 ## State Model
 - Desired state lives in committed YAML files in this repo.
 - Observed live state is read from chain UTxOs and deployed script hashes.
@@ -44,19 +49,20 @@ settings:
 assigned_handles:
   settings:
     hal-settings: hal@handle_settings
-    hal-ref-spend-settings: hal_pz@handle_settings
-    hal-minting-data-settings: hal_root@handle_settings
+    halref-settings: hal_pz@handle_settings
+    halmntmpt-settings: hal_root@handle_settings
   scripts:
-    hal-mint-proxy: hal_mnt_prxy@handle_contract
+    halmntprx: hal_mnt_prxy@handle_contract
 ignored_settings:
   - settings.minting_data.mpt_root_hash
   - settings.minting_data.whitelist_mpt_root_hash
 contracts:
-  - contract_slug: hal-mint-proxy
-    script_type: hal_mint_proxy
-    deployment_handle_slug: halmntprxy
+  - contract_slug: halmntprx
+    script_type: halmntprx
+    old_script_type: hal_mint_proxy
+    deployment_handle_slug: halmntprx
     build:
-      contract_name: mint_proxy.mint
+      contract_name: halmntprx.mint
       kind: minting_policy
 ```
 
@@ -111,8 +117,8 @@ The deployment workflow for this repo currently emits:
 It does not emit `tx-XX.cbor` artifacts yet. Current rollout scope is drift detection plus approval-ready summary generation, with missing or legacy live handles tolerated so partially deployed networks still produce artifacts.
 
 The canonical observed-state artifact remains JSON, but for HAL it is multi-object:
-- seven contract script entries (`hal-mint-proxy`, `hal-mint`, `hal-minting-data`, `hal-orders-spend`, `hal-ref-spend-proxy`, `hal-ref-spend`, `hal-royalty-spend`)
-- three stable settings-handle entries (`hal-settings`, `hal-ref-spend-settings`, `hal-minting-data-settings`)
+- seven contract script entries (`halmntprx`, `halmnt`, `halmntmpt`, `halord`, `halrefprx`, `halref`, `halroy`)
+- three stable settings-handle entries (`hal-settings`, `halref-settings`, `halmntmpt-settings`)
 
 Each contract entry carries the current script hash and current deployment SubHandle. Each settings entry carries the decoded handle-backed desired values without volatile UTxO refs.
 

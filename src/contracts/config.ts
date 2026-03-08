@@ -39,14 +39,14 @@ const buildContracts = (params: BuildContractsParams) => {
     royalty_spend_admin,
   } = params;
 
-  // "mint_proxy.mint"
+  // "halmntprx.mint"
   const mintProxyMintUplcProgram = getMintProxyMintUplcProgram(mint_version);
   const mintProxyPolicyHash = makeMintingPolicyHash(
     mintProxyMintUplcProgram.hash()
   );
   const halPolicyHash = mintProxyPolicyHash;
 
-  // "mint.withdraw"
+  // "halmnt.withdraw"
   const mintWithdrawUplcProgram = getMintWithdrawUplcProgram();
   const mintValidatorHash = makeValidatorHash(mintWithdrawUplcProgram.hash());
   const mintStakingAddress = makeStakingAddress(
@@ -57,7 +57,7 @@ const buildContracts = (params: BuildContractsParams) => {
     mintStakingAddress.stakingCredential
   );
 
-  // "minting_data.spend"
+  // "halmntmpt.spend"
   const mintingDataSpendUplcProgram = getMintingDataSpendUplcProgram(
     admin_verification_key_hash
   );
@@ -69,7 +69,7 @@ const buildContracts = (params: BuildContractsParams) => {
     mintingDataValidatorHash
   );
 
-  // "orders_spend.spend"
+  // "halord.spend"
   const ordersSpendUplcProgram = getOrdersSpendUplcProgram(
     halPolicyHash.toHex(),
     orders_spend_randomizer
@@ -82,7 +82,7 @@ const buildContracts = (params: BuildContractsParams) => {
     ordersSpendValidatorHash
   );
 
-  // "ref_spend_proxy.spend"
+  // "halrefprx.spend"
   const refSpendProxyUplcProgram = getRefSpendProxyUplcProgram();
   const refSpendProxyValidatorHash = makeValidatorHash(
     refSpendProxyUplcProgram.hash()
@@ -103,7 +103,7 @@ const buildContracts = (params: BuildContractsParams) => {
     refSpendStakingAddress.stakingCredential
   );
 
-  // "royalty_spend.spend"
+  // "halroy.spend"
   const royaltySpendUplcProgram =
     getRoyaltySpendUplcProgram(royalty_spend_admin);
   const royaltySpendValidatorHash = makeValidatorHash(

@@ -19,13 +19,13 @@
 - Blockfrost for UTxO access and transaction context.
 
 ## Contract Set
-- `mint_proxy.mint`
-- `mint.withdraw`
-- `minting_data.spend`
-- `orders_spend.spend`
-- `ref_spend_proxy.spend`
-- `ref_spend.withdraw`
-- `royalty_spend.spend`
+- `halmntprx.mint`
+- `halmnt.withdraw`
+- `halmntmpt.spend`
+- `halord.spend`
+- `halrefprx.spend`
+- `halref.withdraw`
+- `halroy.spend`
 
 `deploy` (`src/txs/deploy.ts`) emits script-specific cbor/hash/address payloads and optional parameter datum cbor.
 

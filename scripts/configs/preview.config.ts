@@ -6,14 +6,14 @@ import { makeAddress } from "@helios-lang/ledger";
 // H.A.L. policy id will change
 export const MINT_VERSION = 0n;
 
-// `minting_data.spend` contract code will change
+// `halmntmpt.spend` contract code will change
 export const ADMIN_VERIFICATION_KEY_HASH =
   "4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1";
 
-// `orders_spend.spend` contract will change
+// `halord.spend` contract will change
 export const ORDERS_SPEND_RANDOMIZER = "";
 
-// `royalty_spend.spend` contract will change
+// `halroy.spend` contract will change
 export const ROYALTY_SPEND_ADMIN =
   "4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1";
 // ------- End H.A.L. Mint Contracts Config -------

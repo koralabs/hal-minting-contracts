@@ -115,19 +115,19 @@ const expectedScriptHashForContract = (
   built: ReturnType<typeof buildContracts>
 ): string => {
   switch (contract.build.contractName) {
-    case "mint_proxy.mint":
+    case "halmntprx.mint":
       return built.mintProxy.mintProxyPolicyHash.toHex();
-    case "mint.withdraw":
+    case "halmnt.withdraw":
       return built.mint.mintValidatorHash.toHex();
-    case "minting_data.spend":
+    case "halmntmpt.spend":
       return built.mintingData.mintingDataValidatorHash.toHex();
-    case "orders_spend.spend":
+    case "halord.spend":
       return built.ordersSpend.ordersSpendValidatorHash.toHex();
-    case "ref_spend_proxy.spend":
+    case "halrefprx.spend":
       return built.refSpendProxy.refSpendProxyValidatorHash.toHex();
-    case "ref_spend.withdraw":
+    case "halref.withdraw":
       return built.refSpend.refSpendValidatorHash.toHex();
-    case "royalty_spend.spend":
+    case "halroy.spend":
       return built.royaltySpend.royaltySpendValidatorHash.toHex();
     default:
       throw new Error(`unsupported contract_name \`${contract.build.contractName}\``);
@@ -149,7 +149,7 @@ export const fetchLiveContractStates = async ({
   return Promise.all(
     contracts.map(async (contract) => {
       const response = await fetchFn(
-        `${baseUrl}/scripts?latest=true&type=${encodeURIComponent(contract.scriptType)}`,
+        `${baseUrl}/scripts?latest=true&type=${encodeURIComponent(contract.oldScriptType ?? contract.scriptType)}`,
         { headers: { "User-Agent": userAgent } }
       );
       if (response.status === 404) {
@@ -379,26 +379,26 @@ const expectedSettingsState = (
 
   return {
     halSettings: {
-      mint_governor: scriptHashFor("hal-mint"),
+      mint_governor: scriptHashFor("halmnt"),
       mint_version: desired.buildParameters.mintVersion,
       values: {
-        policy_id: scriptHashFor("hal-mint-proxy"),
+        policy_id: scriptHashFor("halmntprx"),
         allowed_minter: desired.settings.halSettings.allowedMinter,
         hal_nft_price: desired.settings.halSettings.halNftPrice,
-        minting_data_script_hash: scriptHashFor("hal-minting-data"),
-        orders_spend_script_hash: scriptHashFor("hal-orders-spend"),
-        ref_spend_proxy_script_hash: scriptHashFor("hal-ref-spend-proxy"),
-        ref_spend_governor: scriptHashFor("hal-ref-spend"),
+        minting_data_script_hash: scriptHashFor("halmntmpt"),
+        orders_spend_script_hash: scriptHashFor("halord"),
+        ref_spend_proxy_script_hash: scriptHashFor("halrefprx"),
+        ref_spend_governor: scriptHashFor("halref"),
         ref_spend_admin: desired.settings.refSpendSettings.refSpendAdmin,
-        royalty_spend_script_hash: scriptHashFor("hal-royalty-spend"),
+        royalty_spend_script_hash: scriptHashFor("halroy"),
         minting_start_time: desired.settings.halSettings.mintingStartTime,
         payment_address: desired.settings.halSettings.paymentAddress,
       },
     },
     refSpendSettings: {
-      ref_spend_governor: scriptHashFor("hal-ref-spend"),
+      ref_spend_governor: scriptHashFor("halref"),
       values: {
-        policy_id: scriptHashFor("hal-mint-proxy"),
+        policy_id: scriptHashFor("halmntprx"),
         ref_spend_admin: desired.settings.refSpendSettings.refSpendAdmin,
       },
     },
@@ -414,24 +414,30 @@ const expectedSettingsState = (
 export const discoverNextContractSubhandles = async ({
   network,
   contracts,
+  liveContracts = [],
   userAgent,
   fetchFn = fetch,
 }: {
   network: "preview" | "preprod" | "mainnet";
   contracts: DesiredContractTarget[];
+  liveContracts?: LiveContractState[];
   userAgent: string;
   fetchFn?: typeof fetch;
 }) => {
   const entries = await Promise.all(
-    contracts.map(async (contract) => [
-      contract.contractSlug,
-      await discoverNextContractSubhandle({
-        network,
-        deploymentHandleSlug: contract.deploymentHandleSlug,
-        userAgent,
-        fetchFn,
-      }),
-    ] as const)
+    contracts.map(async (contract) => {
+      const liveContract = liveContracts.find((item) => item.contractSlug === contract.contractSlug);
+      return [
+        contract.contractSlug,
+        await discoverNextContractSubhandle({
+          network,
+          deploymentHandleSlug: contract.deploymentHandleSlug,
+          currentSubhandle: liveContract?.currentSubhandle ?? null,
+          userAgent,
+          fetchFn,
+        }),
+      ] as const;
+    })
   );
   return Object.fromEntries(entries) as Record<string, string>;
 };
@@ -439,15 +445,30 @@ export const discoverNextContractSubhandles = async ({
 const discoverNextContractSubhandle = async ({
   network,
   deploymentHandleSlug,
+  currentSubhandle,
   userAgent,
   fetchFn = fetch,
 }: {
   network: string;
   deploymentHandleSlug: string;
+  currentSubhandle?: string | null;
   userAgent: string;
   fetchFn?: typeof fetch;
 }): Promise<string> => {
   const baseUrl = handlesApiBaseUrlForNetwork(network);
+  const currentOrdinal = (() => {
+    if (!currentSubhandle) return 0;
+    const suffix = `@${HANDLECONTRACT_NAMESPACE}`;
+    if (!currentSubhandle.endsWith(suffix) || !currentSubhandle.startsWith(deploymentHandleSlug)) {
+      return 0;
+    }
+    const ordinalText = currentSubhandle.slice(
+      deploymentHandleSlug.length,
+      currentSubhandle.length - suffix.length
+    );
+    return /^[0-9]+$/.test(ordinalText) ? Number.parseInt(ordinalText, 10) : 0;
+  })();
+  const existingOrdinals: number[] = [];
   for (let ordinal = 1; ordinal < 10000; ordinal += 1) {
     const candidate = `${deploymentHandleSlug}${ordinal}@${HANDLECONTRACT_NAMESPACE}`;
     const response = await fetchFn(
@@ -455,11 +476,15 @@ const discoverNextContractSubhandle = async ({
       { headers: { "User-Agent": userAgent } }
     );
     if (response.status === 404) {
-      return candidate;
+      const existingReplacement = existingOrdinals.find((existingOrdinal) => existingOrdinal > currentOrdinal);
+      return existingReplacement
+        ? `${deploymentHandleSlug}${existingReplacement}@${HANDLECONTRACT_NAMESPACE}`
+        : candidate;
     }
     if (!response.ok) {
       throw new Error(`failed to probe SubHandle ${candidate}: HTTP ${response.status}`);
     }
+    existingOrdinals.push(ordinal);
   }
   throw new Error(`no available SubHandle found for ${deploymentHandleSlug}@${HANDLECONTRACT_NAMESPACE}`);
 };
@@ -547,10 +572,10 @@ export const buildDeploymentPlan = ({
       },
     },
     {
-      contract_slug: "hal-ref-spend-settings",
+      contract_slug: "halref-settings",
       drift_type: settingsDriftType(liveSettings.refSpendSettings, expectedSettings.refSpendSettings),
       settings: {
-        type: "hal_ref_spend_settings",
+        type: "halref-settings",
         diff_rows: diffRows(liveSettings.refSpendSettings, expectedSettings.refSpendSettings),
         desired_values: expectedSettings.refSpendSettings.values,
         ignored_paths: [],
@@ -558,23 +583,23 @@ export const buildDeploymentPlan = ({
       expected_post_deploy_state: {
         repo: REPO_NAME,
         network: desired.network,
-        contract_slug: "hal-ref-spend-settings",
+        contract_slug: "halref-settings",
         assigned_handles: {
           settings: desired.assignedHandles.settings.refSpendSettings ? [desired.assignedHandles.settings.refSpendSettings] : [],
           scripts: [],
         },
         settings: {
-          type: "hal_ref_spend_settings",
+          type: "halref-settings",
           values: expectedSettings.refSpendSettings.values,
           ignored_paths: [],
         },
       },
     },
     {
-      contract_slug: "hal-minting-data-settings",
+      contract_slug: "halmntmpt-settings",
       drift_type: settingsDriftType(liveSettings.mintingData, expectedSettings.mintingData, mintingDataDiffIgnoredPaths),
       settings: {
-        type: "hal_minting_data",
+        type: "halmntmpt-settings",
         diff_rows: diffRows(liveSettings.mintingData, expectedSettings.mintingData, mintingDataDiffIgnoredPaths),
         desired_values: expectedSettings.mintingData.values,
         ignored_paths: mintingDataIgnoredPaths,
@@ -582,13 +607,13 @@ export const buildDeploymentPlan = ({
       expected_post_deploy_state: {
         repo: REPO_NAME,
         network: desired.network,
-        contract_slug: "hal-minting-data-settings",
+        contract_slug: "halmntmpt-settings",
         assigned_handles: {
           settings: desired.assignedHandles.settings.mintingData ? [desired.assignedHandles.settings.mintingData] : [],
           scripts: [],
         },
         settings: {
-          type: "hal_minting_data",
+          type: "halmntmpt-settings",
           values: expectedSettings.mintingData.values,
           ignored_paths: mintingDataIgnoredPaths,
         },

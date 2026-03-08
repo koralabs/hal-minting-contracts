@@ -1,13 +1,13 @@
-name = "koralabs/hal-mint-smart-contract"
+name = "koralabs/halmnt-smart-contract"
 version = "0.0.0"
 compiler = "v1.0.29-alpha"
 plutus = "v2"
 license = "Apache-2.0"
-description = "Aiken contracts for project 'koralabs/hal-mint-smart-contract'"
+description = "Aiken contracts for project 'koralabs/halmnt-smart-contract'"
 
 [repository]
 user = "golddydev"
-project = "hal-mint-smart-contract"
+project = "halmnt-smart-contract"
 platform = "github"
 
 [[dependencies]]
