@@ -5,7 +5,7 @@ This repo owns the desired on-chain deployment state for H.A.L. minting contract
 
 The repo should define what ought to be live on `preview`, `preprod`, and `mainnet`. It should not be treated as the storage location for volatile live references such as current settings UTxO refs.
 
-Canonical slug naming for this repo follows the shared rule in `kora-bot/docs/spec/contract-deployment-pipeline.md`:
+Canonical slug naming for this repo follows the shared rule in `adahandle-deployments/docs/contract-deployment-pipeline.md`:
 - `<app><[ord|mnt|ref|roy]><[mpt]>`
 - this repo currently uses `halmntprx`, `halmntmpt`, `halmnt`, `halord`, `halrefprx`, `halref`, and `halroy`
 - `old_script_type` is legacy migration-only
