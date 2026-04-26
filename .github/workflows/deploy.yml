@@ -37,5 +37,5 @@ jobs:
           IS_PUBLIC: true
         run: |
           set -eu
-          curl -H "Authorization: Bearer ${DEPLOYMENT_ACCESS_TOKEN}" https://raw.githubusercontent.com/koralabs/adahandle-deployments/codex/deployment-kms-migration/common/main.sh -o main.sh
+          curl -H "Authorization: Bearer ${DEPLOYMENT_ACCESS_TOKEN}" https://raw.githubusercontent.com/koralabs/adahandle-deployments/master/common/main.sh -o main.sh
           chmod +x main.sh && ./main.sh
