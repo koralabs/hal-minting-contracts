@@ -632,6 +632,20 @@ describe.sequential("Runtime Unit Coverage", () => {
     expect(refSpendResult.ok).toBe(true);
     expect(mintingDataResult.ok).toBe(true);
 
+    // Datum endpoints content-negotiate on Accept; without it the API returns
+    // JSON which decodeUplcData rejects as "invalid hexstring".
+    const datumCalls = fetchApi.mock.calls.filter(([endpoint]) =>
+      String(endpoint).endsWith("/datum")
+    );
+    expect(datumCalls.length).toBeGreaterThan(0);
+    for (const [, params] of datumCalls) {
+      expect(params).toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({ Accept: "text/plain" }),
+        })
+      );
+    }
+
     decodeSettingsDatum.mockImplementationOnce(() => {
       throw new Error("bad settings");
     });

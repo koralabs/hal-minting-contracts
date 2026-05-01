@@ -48,7 +48,7 @@ const fetchSettings = async (
   );
   const settingsHandleDatum: string = await fetchApi(
     `handles/${SETTINGS_HANDLE_NAME}/datum`,
-    { "Content-Type": "text/plain" }
+    { headers: { Accept: "text/plain" } }
   ).then((res) => res.text());
 
   if (!settingsHandleDatum) {
@@ -103,7 +103,7 @@ const fetchRefSpendSettings = async (): Promise<
   ).then((res) => res.json());
   const refSpendSettingsHandleDatum: string = await fetchApi(
     `handles/${REF_SPEND_SETTINGS_HANDLE_NAME}/datum`,
-    { "Content-Type": "text/plain" }
+    { headers: { Accept: "text/plain" } }
   ).then((res) => res.text());
 
   if (!refSpendSettingsHandleDatum) {
@@ -157,7 +157,7 @@ const fetchMintingData = async (): Promise<
         res.json()
       ),
       fetchApi(`handles/${MINTING_DATA_HANDLE_NAME}/datum`, {
-        "Content-Type": "text/plain",
+        headers: { Accept: "text/plain" },
       }).then((res) => res.text()),
     ]);
 
