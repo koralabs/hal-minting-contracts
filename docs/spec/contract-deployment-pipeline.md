@@ -1,23 +1,14 @@
 # Contract Deployment Pipeline Spec
 
 ## Repository Scope
-This repo owns the desired on-chain deployment state for H.A.L. minting contracts and their contract-level settings.
+This repo owns the desired on-chain deployment state for the H.A.L. minting contracts and their handle-backed settings assets. It is the place where engineers state what should be live on `preview`, `preprod`, and `mainnet`, not the place where they preserve transient live chain references.
 
-The repo should define what ought to be live on `preview`, `preprod`, and `mainnet`. It should not be treated as the storage location for volatile live references such as current settings UTxO refs.
+The deployment pipeline therefore has two jobs:
+- derive the script hashes and settings that should exist from committed repo state,
+- compare that desired state to live handle and script state without mutating chain state automatically.
 
-Canonical slug naming for this repo follows the shared rule in `adahandle-deployments/docs/contract-deployment-pipeline.md`:
-- `<app><[ord|mnt|ref|roy]><[mpt]>`
-- this repo currently uses `halmntprx`, `halmntmpt`, `halmnt`, `halord`, `halrefprx`, `halref`, and `halroy`
-- `old_script_type` is legacy migration-only
-
-## State Model
-- Desired state lives in committed YAML files in this repo.
-- Observed live state is read from chain UTxOs and deployed script hashes.
-- Operational automation config lives outside this repo in orchestration/control-plane repos.
-- Volatile fields such as `tx_hash`, `output_index`, and current UTxO refs belong in observed-state artifacts, not committed desired-state YAML.
-
-## Desired State Files
-The committed layout is:
+## Canonical Source Of Truth
+The committed YAML files under `deploy/` are authoritative for deployment planning:
 
 ```text
 deploy/preview/hal-minting.yaml
@@ -25,48 +16,18 @@ deploy/preprod/hal-minting.yaml
 deploy/mainnet/hal-minting.yaml
 ```
 
-Each file contains stable desired state only:
+These files define build parameters, static settings, handle assignments, and the set of contracts the repo owns. The interactive configuration modules in `scripts/configs/*.ts` can still be used to generate contract exports or datum CBOR during manual operations, but they are not the canonical desired-state input for CI or drift detection. If those modules diverge from `deploy/*.yaml`, the YAML wins for deployment-review purposes.
 
-```yaml
-schema_version: 2
-network: preview
-build_parameters:
-  mint_version: 0
-  admin_verification_key_hash: <hex>
-  orders_spend_randomizer: ""
-  royalty_spend_admin: <hex>
-settings:
-  hal_settings:
-    allowed_minter: <hex>
-    hal_nft_price: 30000000
-    payment_address: <bech32>
-    minting_start_time: 1757631246160
-  ref_spend_settings:
-    ref_spend_admin: <hex>
-  minting_data:
-    mpt_root_hash: <hex>
-    whitelist_mpt_root_hash: <hex>
-assigned_handles:
-  settings:
-    hal-settings: hal@handle_settings
-    halref-settings: hal_pz@handle_settings
-    halmntmpt-settings: hal_root@handle_settings
-  scripts:
-    halmntprx: hal_mnt_prxy@handle_contract
-ignored_settings:
-  - settings.minting_data.mpt_root_hash
-  - settings.minting_data.whitelist_mpt_root_hash
-contracts:
-  - contract_slug: halmntprx
-    script_type: halmntprx
-    old_script_type: hal_mint_proxy
-    deployment_handle_slug: halmntprx
-    build:
-      contract_name: halmntprx.mint
-      kind: minting_policy
-```
+## Canonical Slug Rules
+This repo follows the shared slug naming rules used by the broader contract deployment system:
+- `<app><[ord|mnt|ref|roy]><[mpt]>`
+- current slugs are `halmntprx`, `halmntmpt`, `halmnt`, `halord`, `halrefprx`, `halref`, and `halroy`
+- `old_script_type` exists only to support live lookups that still use legacy script type names
 
-Required stable fields:
+`contracts[].deployment_handle_slug` must be no more than 10 characters and must not include separators such as `-` or `_` because the final SubHandle format appends an ordinal and the `@handlecontract` namespace.
+
+## Desired State Schema
+The parser in `src/deploymentState.ts` enforces `schema_version: 2` and validates the shape of every desired-state file. Stable fields include:
 - `schema_version`
 - `network`
 - `build_parameters.*`
@@ -82,52 +43,127 @@ Required stable fields:
 - `contracts[].build.contract_name`
 - `contracts[].build.kind`
 
-Observed-only fields that must not be committed into desired-state YAML:
+The parser also prevents accidental configuration drift by rejecting:
+- unsupported networks,
+- unsupported script types,
+- duplicate contract slugs,
+- empty contract arrays,
+- mismatches between `contract_slug`, `script_type`, and `deployment_handle_slug`,
+- observed-only fields that do not belong in committed state.
+
+## Observed-Only Fields
+The following fields are explicitly blocked from desired YAML because they describe live observations rather than intended steady state:
 - `current_script_hash`
 - `current_settings_utxo_ref`
 - `current_subhandle`
 - `observed_at`
 - `last_deployed_tx_hash`
 
-The initial bootstrap job may populate these files from current chain state, but it must strip live-only references before commit.
+This matters because the repo should remain stable and reviewable. A planner that wrote live references back into git would create noise and make true intent harder to audit.
 
-`contracts[].deployment_handle_slug` values must be 10 characters or fewer and must not contain separators such as `-` or `_`.
-`assigned_handles` must record the currently assigned settings and script handles for each network, including `null` where a settings handle is not live yet.
+## Expected Contract Derivation
+`buildExpectedContractStates()` constructs all validator and policy hashes from the desired build parameters by calling `buildContracts()`. This means script drift is never inferred from filenames or assumptions; it is recomputed from the same parameters that actually control the compiled programs:
+- `mint_version`
+- `admin_verification_key_hash`
+- `orders_spend_randomizer`
+- `royalty_spend_admin`
 
-## Drift Detection
-Deployment automation should:
-- build the contract and derive the expected script hash,
-- load desired YAML from this repo,
-- read live chain state for the contract settings UTxO,
-- classify drift as `script_hash_only`, `settings_only`, or `script_hash_and_settings`.
+Each contract entry maps one `build.contract_name` to exactly one derived script hash. If an unsupported contract name appears, plan generation fails immediately.
 
-No deployment artifact should be created when desired and live state already match.
+## Live State Fetching
+The planner reads live state from network-specific handle API endpoints:
+- `https://preview.api.handle.me`
+- `https://preprod.api.handle.me`
+- `https://api.handle.me`
 
-## SubHandle Rules
-- A script hash change requires a new SubHandle in the format `<deployment_handle_slug><ordinal>@handlecontract`.
-- A settings-only change reuses the current SubHandle and moves it forward with the settings UTxO.
-- The next ordinal must be derived from live chain state, not a repo-local counter.
+It fetches:
+- latest deployed script metadata for each contract,
+- the HAL settings handle and datum,
+- the ref-spend settings handle and datum,
+- the minting-data handle, its datum, and its lovelace-bearing UTxO.
+
+All requests require a `User-Agent`, which is why the workflow passes `KORA_USER_AGENT` into `scripts/generateDeploymentPlan.ts`.
+
+Missing live objects are treated as meaningful drift rather than fatal errors when reasonable. For example, a `404` for a script or settings handle can still produce an approval-ready plan that says the live state is missing.
+
+## Drift Classification
+The current planner distinguishes between:
+- `no_change`
+- `script_hash_only`
+- `settings_only`
+
+For contract entries, the current implementation checks whether the live script hash equals the expected one. If not, the entry is marked `script_hash_only` and receives a new or replacement SubHandle plan.
+
+For settings entries, the planner recursively diffs the live handle-backed values against the desired values and marks the entry `settings_only` when rows differ.
+
+## Ignored Settings
+`ignored_settings` exists so the planner can intentionally suppress diff noise for fields that are allowed to vary outside a contract rollout. In this repo, the committed YAML currently ignores the minting-data root hashes:
+- `settings.minting_data.mpt_root_hash`
+- `settings.minting_data.whitelist_mpt_root_hash`
+
+That means the deployment plan still records desired values, but those two fields do not cause settings drift on their own. This is important because minting activity naturally changes those roots.
+
+## SubHandle Allocation Rules
+Script hash changes cannot silently reuse the same `@handlecontract` SubHandle unless the hash is unchanged. The planner discovers the next handle by:
+1. inspecting the current live handle when present,
+2. probing ordinalized candidates such as `halmnt1@handlecontract`,
+3. selecting the next free or reusable ordinal in sequence.
+
+This ensures that script identity changes are visible and that handle movement remains deterministic across environments.
 
 ## Artifact Contract
-The deployment workflow for this repo currently emits:
-- `deployment-plan.json`
-- `summary.md`
+`scripts/generateDeploymentPlan.ts` emits exactly three artifacts today:
 - `summary.json`
+- `summary.md`
+- `deployment-plan.json`
 
-It does not emit `tx-XX.cbor` artifacts yet. Current rollout scope is drift detection plus approval-ready summary generation, with missing or legacy live handles tolerated so partially deployed networks still produce artifacts.
+Each artifact is written into the caller-provided artifacts directory and annotated with:
+- `plan_id`
+- `repo`
+- `network`
+- `tx_artifact_generated: false`
+- `artifact_files`
 
-The canonical observed-state artifact remains JSON, but for HAL it is multi-object:
-- seven contract script entries (`halmntprx`, `halmnt`, `halmntmpt`, `halord`, `halrefprx`, `halref`, `halroy`)
-- three stable settings-handle entries (`hal-settings`, `halref-settings`, `halmntmpt-settings`)
+The absence of CBOR artifacts is intentional. The current rollout model for this repo is planning and review, not fully automated submission.
 
-Each contract entry carries the current script hash and current deployment SubHandle. Each settings entry carries the decoded handle-backed desired values without volatile UTxO refs.
+## Artifact Semantics
+
+### `summary.json`
+- Machine-readable overview of contract and settings drift.
+- Includes script hash comparisons, handle plans, diff rows, and expected post-deploy state.
+
+### `summary.md`
+- Human-readable review summary.
+- Best suited for PR comments, deployment review threads, or artifact inspection without a JSON parser.
+
+### `deployment-plan.json`
+- Normalized post-deploy state object that downstream tooling can consume when a deployment is approved.
 
 ## Human Approval Boundary
-Automation prepares deployment transactions and summaries.
+The planner prepares evidence. It does not sign, submit, or auto-heal. Humans remain responsible for:
+- reviewing the drift classification,
+- deciding whether the change is intended,
+- downloading or generating any wallet-signable artifacts required for the rollout,
+- approving submission through the correct wallet boundary.
 
-Humans remain responsible for:
-- downloading CBOR artifacts,
-- uploading/signing/submitting in Eternl,
-- approving the deployment at the wallet boundary.
+This is especially important for H.A.L. because a bad rollout can alter policy, redirect settings, or break minting governance across environments.
 
-Post-submit automation should verify that chain state converges to the desired YAML plus the expected SubHandle transition.
+## Operational Failure Modes
+- Desired YAML includes observed-only fields and fails schema validation.
+- A contract slug or build name does not map to the supported contract set.
+- Live handle state is missing or malformed.
+- `KORA_USER_AGENT` is absent, causing handle API requests to violate the ecosystem rule for `*.handle.me`.
+- Engineers review `scripts/configs/*.ts` instead of the committed desired YAML and misinterpret what the next rollout should do.
+
+## Expected Workflow
+1. Edit `deploy/<network>/hal-minting.yaml` if desired state truly changed.
+2. Run the deployment planner locally or through CI.
+3. Review `summary.md` and `summary.json`.
+4. Confirm whether the change is:
+   - a script rotation,
+   - a settings-only update,
+   - a no-op.
+5. Obtain human approval before any wallet-signing or submission step.
+6. After rollout, verify that live handles and hashes converge to the repo's desired state.
+
+This workflow keeps the repo honest about the difference between "what is committed," "what is live," and "what has merely been proposed."
