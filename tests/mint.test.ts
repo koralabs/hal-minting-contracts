@@ -6,7 +6,7 @@ import {
   makeValidatorHash,
 } from "@helios-lang/ledger";
 import { Ok } from "ts-res";
-import { assert, describe } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import { PREFIX_100 } from "../src/constants/index.js";
 import {
@@ -2192,4 +2192,225 @@ describe.sequential("Koralab H.A.L Tests", () => {
       );
     }
   );
+
+  test("runtime coverage: buildProofs mutates trie entries and returns parsed proofs", async () => {
+    vi.resetModules();
+    const { buildProofs } = await import("../src/txs/proof.js");
+    const proofJson = [
+      { type: "branch", skip: 0, neighbors: "aa" },
+      {
+        type: "fork",
+        skip: 1,
+        neighbor: { nibble: 2, prefix: "bb", root: "cc" },
+      },
+      { type: "leaf", skip: 3, neighbor: { key: "dd", value: "ee" } },
+    ];
+    const db = {
+      get: vi.fn(async (key: string) =>
+        key === "hal-1" ? Buffer.from("00", "hex") : undefined
+      ),
+      prove: vi.fn(async () => ({ toJSON: () => proofJson })),
+      delete: vi.fn(async () => undefined),
+      insert: vi.fn(async () => undefined),
+    };
+
+    const result = await buildProofs({
+      orderedAssets: [
+        {
+          utf8Name: "hal-1",
+          hexName: "68616c2d31",
+          destinationAddress: {} as never,
+          price: 1n,
+        },
+      ],
+      db: db as never,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual([
+      {
+        asset_name: "68616c2d31",
+        mpt_proof: [
+          { type: "branch", skip: 0, neighbors: "aa" },
+          {
+            type: "fork",
+            skip: 1,
+            neighbor: { nibble: 2, prefix: "bb", root: "cc" },
+          },
+          { type: "leaf", skip: 3, key: "dd", value: "ee" },
+        ],
+      },
+    ]);
+    expect(db.get).toHaveBeenCalledWith("hal-1");
+    expect(db.prove).toHaveBeenCalledWith("hal-1");
+    expect(db.delete).toHaveBeenCalledWith("hal-1");
+    expect(db.insert).toHaveBeenCalledWith("hal-1", expect.anything());
+  });
+
+  test("runtime coverage: buildProofs reports missing assets before mutating the trie", async () => {
+    vi.resetModules();
+    const { buildProofs } = await import("../src/txs/proof.js");
+    const db = {
+      get: vi.fn(async () => undefined),
+      prove: vi.fn(),
+      delete: vi.fn(),
+      insert: vi.fn(),
+    };
+
+    const result = await buildProofs({
+      orderedAssets: [
+        {
+          utf8Name: "hal-missing",
+          hexName: "68616c2d6d697373696e67",
+          destinationAddress: {} as never,
+          price: 1n,
+        },
+      ],
+      db: db as never,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain(
+      "Asset name is not pre-defined: hal-missing"
+    );
+    expect(db.prove).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  test("runtime coverage: mayFail and mayFailAsync invoke handlers only on failures", async () => {
+    vi.resetModules();
+    const { mayFail, mayFailAsync } = await import("../src/helpers/index.js");
+
+    const syncOkHandler = vi.fn();
+    const syncOk = mayFail(() => 7);
+    expect(syncOk.ok).toBe(true);
+    syncOk.handle(syncOkHandler);
+    expect(syncOkHandler).not.toHaveBeenCalled();
+
+    const syncErrorHandler = vi.fn();
+    const syncError = mayFail(() => {
+      throw new Error("sync failure");
+    });
+    const handledSyncError = syncError.handle(syncErrorHandler);
+    expect(handledSyncError.ok).toBe(false);
+    expect(syncErrorHandler).toHaveBeenCalledWith("sync failure");
+
+    const asyncOkHandler = vi.fn();
+    const asyncOk = await mayFailAsync(async () => "ok")
+      .handle(asyncOkHandler)
+      .complete();
+    expect(asyncOk.ok).toBe(true);
+    expect(asyncOkHandler).not.toHaveBeenCalled();
+
+    const asyncErrorHandler = vi.fn();
+    const asyncError = await mayFailAsync(async () => {
+      throw new TypeError("async failure");
+    })
+      .handle(asyncErrorHandler)
+      .complete();
+    expect(asyncError.ok).toBe(false);
+    expect(asyncErrorHandler).toHaveBeenCalledWith("async failure");
+  });
+
+  test("runtime coverage: network utilities fetch parameters, account status, and fallback program", async () => {
+    vi.resetModules();
+    const {
+      checkAccountRegistrationStatus,
+      createAlwaysFailUplcProgram,
+      fetchNetworkParameters,
+    } = await import("../src/utils/index.js");
+    const parameters = { latestParams: true };
+    const fetchMock = vi.fn(async () => ({
+      json: async () => parameters,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchNetworkParameters("preprod");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toBe(parameters);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://network-status.helios-lang.io/preprod/config"
+    );
+
+    const blockfrostApi = {
+      accountsRegistrations: vi.fn(async (address: string) => [
+        { action: address === "stake_mint" ? "registered" : "deregistered" },
+      ]),
+    };
+    await expect(
+      checkAccountRegistrationStatus(
+        blockfrostApi as never,
+        "stake_mint",
+        "stake_ref"
+      )
+    ).resolves.toEqual({
+      mintStakingAddress: "registered",
+      refSpendStakingAddress: "deregistered",
+    });
+
+    blockfrostApi.accountsRegistrations.mockRejectedValueOnce(
+      new Error("not found")
+    );
+    await expect(
+      checkAccountRegistrationStatus(
+        blockfrostApi as never,
+        "stake_mint",
+        "stake_ref"
+      )
+    ).resolves.toEqual({
+      mintStakingAddress: "none",
+      refSpendStakingAddress: "none",
+    });
+
+    vi.spyOn(Math, "random").mockReturnValue(0.1);
+    expect(createAlwaysFailUplcProgram()).toBeDefined();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  test("runtime coverage: fetchDeployedScript uses the API type filter and rejects missing scripts", async () => {
+    vi.resetModules();
+    const deployedScript = {
+      handle: "hal",
+      handleHex: "68616c",
+      type: "minting-policy",
+      validatorHash: "a".repeat(56),
+      refScriptUtxo: "tx#0",
+    };
+    const fetchApi = vi.fn(async () => ({
+      json: async () => deployedScript,
+    }));
+    vi.doMock("../src/helpers/api.js", () => ({ fetchApi }));
+
+    const { fetchDeployedScript } = await import("../src/utils/contract.js");
+
+    await expect(
+      fetchDeployedScript("minting-policy" as never)
+    ).resolves.toBe(deployedScript);
+    expect(fetchApi).toHaveBeenCalledWith(
+      "scripts?latest=true&type=minting-policy"
+    );
+
+    fetchApi.mockResolvedValueOnce({ json: async () => null });
+    await expect(fetchDeployedScript("royalty" as never)).rejects.toThrow(
+      "royalty script details not deployed"
+    );
+    vi.doUnmock("../src/helpers/api.js");
+  });
+
+  test("runtime coverage: royalty spend redeemers expose update and migrate constructors", async () => {
+    vi.resetModules();
+    const {
+      buildRoyaltySpendMigrateRedeemer,
+      buildRoyaltySpendUpdateRedeemer,
+    } = await import("../src/contracts/data/royalty_spend.js");
+
+    expect(buildRoyaltySpendUpdateRedeemer().kind).toBe("constr");
+    expect(buildRoyaltySpendMigrateRedeemer().kind).toBe("constr");
+  });
+
 });
