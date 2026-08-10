@@ -31,6 +31,22 @@ const makeOrderInput = (
   };
 };
 
+const mockOrderDatumDecoder = () => {
+  vi.doMock("../src/contracts/index.js", async (importOriginal) => {
+    const original = await importOriginal<typeof import("../src/contracts/index.js")>();
+    return {
+      ...original,
+      decodeOrderDatumData: vi.fn((datum) =>
+        (datum as { __orderDatum?: unknown }).__orderDatum ?? {
+          owner_key_hash: "1".repeat(56),
+          destination_address: makeAddress(false, makePubKeyHash("1".repeat(56))),
+          amount: 1,
+        }
+      ),
+    };
+  });
+};
+
 describe("prepare orders coverage", () => {
   test("orderToConsecutiveSum7 prefers shortest consecutive partners while preserving order", async () => {
     const { orderToConsecutiveSum7 } = await import("../src/txs/prepareOrders.js");
@@ -46,17 +62,7 @@ describe("prepare orders coverage", () => {
 
   test("aggregateOrderTxInputs separates valid, unpicked, and invalid orders", async () => {
     vi.resetModules();
-    vi.doMock("../src/contracts/index.js", async (importOriginal) => {
-      const original = await importOriginal<typeof import("../src/contracts/index.js")>();
-      return {
-        ...original,
-        decodeOrderDatumData: vi.fn((datum) => (datum as { __orderDatum?: unknown }).__orderDatum ?? {
-          owner_key_hash: "1".repeat(56),
-          destination_address: makeAddress(false, makePubKeyHash("1".repeat(56))),
-          amount: 1,
-        }),
-      };
-    });
+    mockOrderDatumDecoder();
 
     const { aggregateOrderTxInputs } = await import("../src/txs/prepareOrders.js");
     const destinationAddress = makeAddress(false, makePubKeyHash("1".repeat(56)));
@@ -90,19 +96,151 @@ describe("prepare orders coverage", () => {
     expect(result.data.invalidOrderTxInputs[0].id.toString()).toBe("tx-3-30");
   });
 
+  test("aggregateOrderTxInputs leaves later valid orders unpicked at the lambda limit", async () => {
+    vi.resetModules();
+    mockOrderDatumDecoder();
+
+    const { aggregateOrderTxInputs } = await import("../src/txs/prepareOrders.js");
+    const firstDestination = makeAddress(false, makePubKeyHash("1".repeat(56)));
+    const secondDestination = makeAddress(false, makePubKeyHash("2".repeat(56)));
+    const unpickedOrder = makeOrderInput(1, 11n, firstDestination);
+    const orderInputs = [
+      makeOrderInput(1, 10n, firstDestination),
+      makeOrderInput(1, 10n, secondDestination),
+      unpickedOrder,
+    ];
+
+    const result = await aggregateOrderTxInputs({
+      isMainnet: false,
+      orderTxInputs: orderInputs as never,
+      settingsV1: {
+        hal_nft_price: 10n,
+        minting_start_time: 2_000,
+        orders_spend_script_hash: "a".repeat(56),
+      } as never,
+      whitelistDB: { get: vi.fn(async () => null) } as never,
+      mintingTime: 3_000,
+      maxOrderAmountInOneTx: 2,
+      maxTxsPerLambda: 1,
+      remainingHals: 10,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.aggregatedOrdersList).toHaveLength(1);
+    expect(result.data.aggregatedOrdersList[0]).toHaveLength(2);
+    expect(
+      result.data.aggregatedOrdersList[0].map(({ destinationAddress }) =>
+        destinationAddress.toHex()
+      )
+    ).toEqual([firstDestination.toHex(), secondDestination.toHex()]);
+    expect(result.data.unpickedOrderTxInputs).toEqual([unpickedOrder]);
+    expect(result.data.invalidOrderTxInputs).toHaveLength(0);
+  });
+
+  test("aggregateOrderTxInputs rejects underfunded public orders", async () => {
+    vi.resetModules();
+    mockOrderDatumDecoder();
+
+    const { aggregateOrderTxInputs } = await import("../src/txs/prepareOrders.js");
+    const underfundedOrder = makeOrderInput(2, 19n);
+
+    const result = await aggregateOrderTxInputs({
+      isMainnet: false,
+      orderTxInputs: [underfundedOrder] as never,
+      settingsV1: {
+        hal_nft_price: 10n,
+        minting_start_time: 2_000,
+        orders_spend_script_hash: "a".repeat(56),
+      } as never,
+      whitelistDB: { get: vi.fn(async () => null) } as never,
+      mintingTime: 3_000,
+      maxOrderAmountInOneTx: 3,
+      maxTxsPerLambda: 2,
+      remainingHals: 3,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.aggregatedOrdersList).toHaveLength(0);
+    expect(result.data.unpickedOrderTxInputs).toHaveLength(0);
+    expect(result.data.invalidOrderTxInputs).toEqual([underfundedOrder]);
+  });
+
+  test("aggregateOrderTxInputs refunds non-whitelisted orders before public mint", async () => {
+    vi.resetModules();
+    mockOrderDatumDecoder();
+
+    const { aggregateOrderTxInputs } = await import("../src/txs/prepareOrders.js");
+    const earlyOrder = makeOrderInput(1, 10n);
+
+    const result = await aggregateOrderTxInputs({
+      isMainnet: false,
+      orderTxInputs: [earlyOrder] as never,
+      settingsV1: {
+        hal_nft_price: 10n,
+        minting_start_time: 3_000,
+        orders_spend_script_hash: "a".repeat(56),
+      } as never,
+      whitelistDB: { get: vi.fn(async () => null) } as never,
+      mintingTime: 2_000,
+      maxOrderAmountInOneTx: 3,
+      maxTxsPerLambda: 2,
+      remainingHals: 3,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.aggregatedOrdersList).toHaveLength(0);
+    expect(result.data.unpickedOrderTxInputs).toHaveLength(0);
+    expect(result.data.invalidOrderTxInputs).toEqual([earlyOrder]);
+  });
+
+  test("aggregateOrderTxInputs marks mixed whitelist and public-price orders for proof", async () => {
+    vi.resetModules();
+    mockOrderDatumDecoder();
+
+    const { makeWhitelistedValueData } = await import("../src/contracts/index.js");
+    const { aggregateOrderTxInputs } = await import("../src/txs/prepareOrders.js");
+    const whitelistDB = {
+      get: vi.fn(async () =>
+        Buffer.from(
+          makeWhitelistedValueData([{ time_gap: 0, amount: 1, price: 5n }]).toCbor()
+        )
+      ),
+    };
+    const mixedPriceOrder = makeOrderInput(2, 15n);
+
+    const result = await aggregateOrderTxInputs({
+      isMainnet: false,
+      orderTxInputs: [mixedPriceOrder] as never,
+      settingsV1: {
+        hal_nft_price: 10n,
+        minting_start_time: 2_000,
+        orders_spend_script_hash: "a".repeat(56),
+      } as never,
+      whitelistDB: whitelistDB as never,
+      mintingTime: 3_000,
+      maxOrderAmountInOneTx: 3,
+      maxTxsPerLambda: 2,
+      remainingHals: 3,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(whitelistDB.get).toHaveBeenCalledOnce();
+    expect(result.data.invalidOrderTxInputs).toHaveLength(0);
+    expect(result.data.unpickedOrderTxInputs).toHaveLength(0);
+    expect(result.data.aggregatedOrdersList[0][0]).toMatchObject({
+      amount: 2,
+      needWhitelistProof: true,
+      orderTxInputs: [mixedPriceOrder],
+    });
+  });
+
   test("prepareOrders includes initial invalid orders and aggregation-time invalid orders", async () => {
     vi.resetModules();
-    vi.doMock("../src/contracts/index.js", async (importOriginal) => {
-      const original = await importOriginal<typeof import("../src/contracts/index.js")>();
-      return {
-        ...original,
-        decodeOrderDatumData: vi.fn((datum) => (datum as { __orderDatum?: unknown }).__orderDatum ?? {
-          owner_key_hash: "1".repeat(56),
-          destination_address: makeAddress(false, makePubKeyHash("1".repeat(56))),
-          amount: 1,
-        }),
-      };
-    });
+    mockOrderDatumDecoder();
 
     const { prepareOrders } = await import("../src/txs/prepareOrders.js");
     const destinationAddress = makeAddress(false, makePubKeyHash("1".repeat(56)));
