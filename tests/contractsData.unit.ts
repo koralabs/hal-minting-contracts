@@ -1,32 +1,53 @@
-import { makeAddress, makePubKeyHash } from "@helios-lang/ledger";
+import { makeAddress, makeInlineTxOutputDatum, makePubKeyHash } from "@helios-lang/ledger";
 import { makeConstrData } from "@helios-lang/uplc";
 import { describe, expect, test } from "vitest";
 
 import {
   buildMintBurnNFTsRedeemer,
+  buildMintingData,
+  buildMintingDataMintRedeemer,
+  buildMintingDataUpdateMPTRedeemer,
   buildMintMintNFTsRedeemer,
   buildMintMintRoyaltyNFTRedeemer,
+  buildMPTProofData,
+  buildMPTProofStepData,
+  buildNeighborData,
+  buildOrderDatumData,
+  buildOrdersSpendCancelOrderRedeemer,
+  buildOrdersSpendExecuteOrdersRedeemer,
+  buildOrdersSpendRefundOrderRedeemer,
+  buildRefSpendSettingsData,
   buildRefSpendSettingsV1Data,
   buildRoyaltyDatumData,
   buildRoyaltyRecipientData,
   buildRoyaltySpendMigrateRedeemer,
   buildRoyaltySpendUpdateRedeemer,
+  buildSettingsData,
   buildSettingsV1Data,
   convertOnChainPercentageToPercentage,
   convertPercentageToOnChainPercentage,
-  decodeRefSpendSettingsV1Data,
+  decodeMintingDataDatum,
+  decodeOrderDatumData,
+  decodeRefSpendSettingsData,
+  decodeRefSpendSettingsDatum,
+  decodeSettingsDatum,
   decodeSettingsV1Data,
+  decodeWhitelistedValueFromCBOR,
+  makeWhitelistedValueData,
 } from "../src/contracts/index.js";
 
 const hash = (char: string) => char.repeat(56);
 
 describe("contract data coverage", () => {
-  test("mint and royalty redeemer builders expose their constructor tags", () => {
+  test("mint, royalty, and order redeemer builders expose their constructor tags", () => {
     expect((buildMintMintNFTsRedeemer() as { tag: number }).tag).toBe(0);
     expect((buildMintBurnNFTsRedeemer() as { tag: number }).tag).toBe(1);
     expect((buildMintMintRoyaltyNFTRedeemer() as { tag: number }).tag).toBe(2);
     expect((buildRoyaltySpendUpdateRedeemer() as { tag: number }).tag).toBe(0);
     expect((buildRoyaltySpendMigrateRedeemer() as { tag: number }).tag).toBe(1);
+    expect((buildOrdersSpendExecuteOrdersRedeemer() as { tag: number }).tag).toBe(0);
+    expect((buildOrdersSpendCancelOrderRedeemer() as { tag: number }).tag).toBe(1);
+    expect((buildOrdersSpendRefundOrderRedeemer() as { tag: number }).tag).toBe(2);
   });
 
   test("royalty datum builders cover recipient fee bounds and conversions", () => {
@@ -104,5 +125,77 @@ describe("contract data coverage", () => {
         buildRefSpendSettingsV1Data(refSpendSettingsV1)
       )
     ).toEqual(refSpendSettingsV1);
+  });
+
+  test("minting data builders round trip roots and optional proof redeemers", () => {
+    const mintingData = {
+      mpt_root_hash: "aa".repeat(32),
+      whitelist_mpt_root_hash: "bb".repeat(32),
+    };
+    const mintingDatum = makeInlineTxOutputDatum(buildMintingData(mintingData));
+
+    expect(decodeMintingDataDatum(mintingDatum)).toEqual(mintingData);
+    expect(() => decodeMintingDataDatum(undefined)).toThrow(
+      "Minting Data Datum must be inline datum"
+    );
+
+    const mintRedeemer = buildMintingDataMintRedeemer([
+      [
+        [["68616c", [{ type: "leaf", skip: 0, key: "dd", value: "ee" }]]],
+        undefined,
+      ],
+    ] as never);
+
+    expect((mintRedeemer as { tag: number }).tag).toBe(0);
+    expect((buildMintingDataUpdateMPTRedeemer() as { tag: number }).tag).toBe(1);
+  });
+
+  test("MPT proof data builders preserve branch, fork, leaf, and neighbor tags", () => {
+    const proof = [
+      { type: "branch", skip: 1, neighbors: "aa" },
+      { type: "fork", skip: 2, neighbor: { nibble: 3, prefix: "bb", root: "cc" } },
+      { type: "leaf", skip: 4, key: "dd", value: "ee" },
+    ] as const;
+
+    expect((buildMPTProofData([...proof] as never) as { kind: string }).kind).toBe("list");
+    expect((buildMPTProofStepData(proof[0] as never) as { tag: number }).tag).toBe(0);
+    expect((buildMPTProofStepData(proof[1] as never) as { tag: number }).tag).toBe(1);
+    expect((buildMPTProofStepData(proof[2] as never) as { tag: number }).tag).toBe(2);
+    expect(
+      (buildNeighborData({ nibble: 3, prefix: "bb", root: "cc" }) as { tag: number }).tag
+    ).toBe(0);
+  });
+
+  test("whitelist CBOR decoding covers multi-item values and valid non-list failures", () => {
+    const whitelistedValue = [
+      { time_gap: 0, amount: 1, price: 1n },
+      { time_gap: 30, amount: 2, price: 5_000_000n },
+    ];
+
+    const decoded = decodeWhitelistedValueFromCBOR(
+      Buffer.from(makeWhitelistedValueData(whitelistedValue).toCbor())
+    );
+    expect(decoded.ok).toBe(true);
+    if (decoded.ok) expect(decoded.data).toEqual(whitelistedValue);
+
+    const notList = decodeWhitelistedValueFromCBOR(
+      Buffer.from(makeConstrData(0, []).toCbor())
+    );
+    expect(notList.ok).toBe(false);
+    if (!notList.ok) {
+      expect(notList.error.message).toContain("whitelisted_value must be List Data");
+    }
+  });
+
+  test("datum decoders reject missing inline datum guardrails", () => {
+    expect(() => decodeOrderDatumData(undefined, false)).toThrow(
+      "OrderDatum must be inline datum"
+    );
+    expect(() => decodeSettingsDatum(undefined)).toThrow(
+      "Settings must be inline datum"
+    );
+    expect(() => decodeRefSpendSettingsDatum(undefined)).toThrow(
+      "RefSpendSettings must be inline datum"
+    );
   });
 });
