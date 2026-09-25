@@ -1,16 +1,13 @@
-import {
-  InlineTxOutputDatum,
-  makeAssetClass,
-  makeAssets,
-  makePubKeyHash,
-  makeStakingAddress,
-  makeStakingValidatorHash,
-  makeValue,
-  TxInput,
-} from "@helios-lang/ledger";
-import { makeTxBuilder, TxBuilder } from "@helios-lang/tx-utils";
 import { Err, Ok, Result } from "ts-res";
 
+import {
+  assetId,
+  holdsAsset,
+  inlineDatumOf,
+  PlutusData,
+  scriptRewardAccount,
+  Utxo,
+} from "../cardano/index.js";
 import { PREFIX_100 } from "../constants/index.js";
 import {
   decodeRefSpendSettingsDatum,
@@ -19,104 +16,64 @@ import {
 } from "../contracts/index.js";
 import { mayFail } from "../helpers/index.js";
 import { DeployedScripts } from "./deploy.js";
+import { HalTxPlan, referTo } from "./plan.js";
 
 interface UpdateParams {
   isMainnet: boolean;
   assetUtf8Name: string;
-  refTxInput: TxInput;
-  newDatum: InlineTxOutputDatum;
+  refTxInput: Utxo;
+  /** The new CIP-68 reference datum. */
+  newDatum: PlutusData;
   deployedScripts: DeployedScripts;
-  refSpendSettingsAssetTxInput: TxInput;
+  refSpendSettingsAssetTxInput: Utxo;
 }
 
 /**
- * @description Update reference asset's datum
- * @param {UpdateParams} params
- * @returns {Promise<Result<TxBuilder,  Error>>} Transaction Result
+ * @description Update a reference asset's datum (ref_spend_proxy spend, authorized by the ref_spend
+ * withdrawal validator and the ref_spend_admin's signature).
  */
-const update = async (
-  params: UpdateParams
-): Promise<Result<TxBuilder, Error>> => {
-  const {
-    isMainnet,
-    assetUtf8Name,
-    refTxInput,
-    newDatum,
-    deployedScripts,
-    refSpendSettingsAssetTxInput,
-  } = params;
+const update = async (params: UpdateParams): Promise<Result<HalTxPlan, Error>> => {
+  const { isMainnet, assetUtf8Name, refTxInput, newDatum, deployedScripts, refSpendSettingsAssetTxInput } =
+    params;
   const assetHexName = Buffer.from(assetUtf8Name).toString("hex");
+  const { refSpendProxyScriptTxInput, refSpendScriptDetails, refSpendScriptTxInput } = deployedScripts;
 
-  const {
-    refSpendProxyScriptTxInput,
-    refSpendScriptDetails,
-    refSpendScriptTxInput,
-  } = deployedScripts;
-
-  // decode settings
   const settingsResult = mayFail(() =>
-    decodeRefSpendSettingsDatum(refSpendSettingsAssetTxInput.datum)
+    decodeRefSpendSettingsDatum(inlineDatumOf(refSpendSettingsAssetTxInput))
   );
   if (!settingsResult.ok) {
-    return Err(
-      new Error(`Failed to decode ref spend settings: ${settingsResult.error}`)
-    );
+    return Err(new Error(`Failed to decode ref spend settings: ${settingsResult.error}`));
   }
-  const { data: settingsV1Data } = settingsResult.data;
-  const settingsV1Result = mayFail(() =>
-    decodeRefSpendSettingsV1Data(settingsV1Data)
-  );
+  const settingsV1Result = mayFail(() => decodeRefSpendSettingsV1Data(settingsResult.data.data));
   if (!settingsV1Result.ok) {
-    return Err(
-      new Error(
-        `Failed to decode ref spend settings v1: ${settingsV1Result.error}`
-      )
-    );
+    return Err(new Error(`Failed to decode ref spend settings v1: ${settingsV1Result.error}`));
   }
   const { policy_id, ref_spend_admin } = settingsV1Result.data;
 
-  // reference asset value
-  const refAssetName = `${PREFIX_100}${assetHexName}`;
-  const refAssetClass = makeAssetClass(`${policy_id}.${refAssetName}`);
-  const refAsset = makeAssets([[refAssetClass, 1n]]);
+  const refUnit = assetId(policy_id, `${PREFIX_100}${assetHexName}`);
+  if (!holdsAsset(refTxInput, refUnit)) return Err(new Error("Reference asset not found."));
 
-  // check refTxInput has ref asset
-  if (!refTxInput.value.isGreaterOrEqual(makeValue(0n, refAsset))) {
-    return Err(new Error("Reference asset not found."));
-  }
-
-  // start building tx
-  const txBuilder = makeTxBuilder({
-    isMainnet,
+  return Ok({
+    inputs: [{ utxo: refTxInput, redeemer: makeVoidData() }],
+    // the reference asset back to its address with the new datum (min-UTxO topped up)
+    outputs: [
+      {
+        address: refTxInput[1].address,
+        value: { coins: BigInt(0), assets: new Map([[refUnit, BigInt(1)]]) },
+        datum: newDatum.toCore(),
+      },
+    ],
+    withdrawals: [
+      {
+        rewardAccount: scriptRewardAccount(refSpendScriptDetails.validatorHash, isMainnet),
+        quantity: BigInt(0),
+        redeemer: makeVoidData(),
+      },
+    ],
+    requiredSigners: [ref_spend_admin],
+    ...referTo([refSpendSettingsAssetTxInput, refSpendProxyScriptTxInput, refSpendScriptTxInput]),
   });
-
-  // <-- attach Settings asset
-  txBuilder.refer(refSpendSettingsAssetTxInput);
-
-  // <-- attach ref_spend_proxy, ref_spend scripts
-  txBuilder.refer(refSpendProxyScriptTxInput, refSpendScriptTxInput);
-
-  // <-- withdraw from ref_spend script
-  txBuilder.withdrawUnsafe(
-    makeStakingAddress(
-      isMainnet,
-      makeStakingValidatorHash(refSpendScriptDetails.validatorHash)
-    ),
-    0n,
-    makeVoidData()
-  );
-
-  // <-- add ref_spend_admin signer
-  txBuilder.addSigners(makePubKeyHash(ref_spend_admin));
-
-  // <-- spend refTxInput
-  txBuilder.spendUnsafe(refTxInput, makeVoidData());
-
-  // <-- pay ref asset with updated datum
-  txBuilder.payUnsafe(refTxInput.address, makeValue(0n, refAsset), newDatum);
-
-  return Ok(txBuilder);
 };
 
-export { update };
 export type { UpdateParams };
+export { update };

@@ -1,13 +1,11 @@
-import { TxOutputDatum } from "@helios-lang/ledger";
 import {
-  expectByteArrayData,
-  expectConstrData,
-  makeByteArrayData,
-  makeConstrData,
-  makeListData,
-  UplcData,
-} from "@helios-lang/uplc";
-
+  bytes,
+  constr,
+  expectBytes,
+  expectConstr,
+  list,
+  PlutusData,
+} from "../../cardano/index.js";
 import { invariant } from "../../helpers/index.js";
 import {
   AssetNameProof,
@@ -19,77 +17,38 @@ import { makeOptionData } from "./common.js";
 import { buildMPTProofData } from "./mpt.js";
 import { makeWhitelistedValueData } from "./whitelist.js";
 
-const buildMintingData = (mintingData: MintingData): UplcData => {
-  const { mpt_root_hash, whitelist_mpt_root_hash } = mintingData;
-
-  return makeConstrData(0, [
-    makeByteArrayData(mpt_root_hash),
-    makeByteArrayData(whitelist_mpt_root_hash),
+const buildMintingData = (mintingData: MintingData): PlutusData =>
+  constr(0, [
+    bytes(mintingData.mpt_root_hash),
+    bytes(mintingData.whitelist_mpt_root_hash),
   ]);
+
+/** `datum` is the minting-data (hal_root) UTxO's inline datum. */
+const decodeMintingDataDatum = (datum: PlutusData | undefined): MintingData => {
+  invariant(datum, "Minting Data Datum must be inline datum");
+  const { fields } = expectConstr(datum, "MintingData", 0, 2);
+  return {
+    mpt_root_hash: expectBytes(fields[0], "mpt_root_hash"),
+    whitelist_mpt_root_hash: expectBytes(fields[1], "whitelist_mpt_root_hash"),
+  };
 };
 
-const decodeMintingDataDatum = (
-  datum: TxOutputDatum | undefined
-): MintingData => {
-  invariant(
-    datum?.kind == "InlineTxOutputDatum",
-    "Minting Data Datum must be inline datum"
-  );
-  const datumData = datum.data;
-  const mintingDataConstrData = expectConstrData(datumData, 0, 2);
+const buildAssetNameProofData = ([asset_name, mpt_proof]: AssetNameProof): PlutusData =>
+  list([bytes(asset_name), buildMPTProofData(mpt_proof)]);
 
-  const mpt_root_hash = expectByteArrayData(
-    mintingDataConstrData.fields[0],
-    "mpt_root_hash must be ByteArray"
-  ).toHex();
+const buildWhitelistProofData = ([whitelisted_value, mpt_proof]: WhitelistProof): PlutusData =>
+  list([makeWhitelistedValueData(whitelisted_value), buildMPTProofData(mpt_proof)]);
 
-  const whitelist_mpt_root_hash = expectByteArrayData(
-    mintingDataConstrData.fields[1],
-    "whitelist_mpt_root_hash must be ByteArray"
-  ).toHex();
-
-  return { mpt_root_hash, whitelist_mpt_root_hash };
-};
-
-const buildAssetNameProofData = (assetNameProof: AssetNameProof): UplcData => {
-  const [asset_name, mpt_proof] = assetNameProof;
-  return makeListData([
-    makeByteArrayData(asset_name),
-    buildMPTProofData(mpt_proof),
-  ]);
-};
-
-const buildAssetNameProofsData = (
-  assetNameProofs: AssetNameProof[]
-): UplcData => {
-  return makeListData(assetNameProofs.map(buildAssetNameProofData));
-};
-
-const buildWhitelistProofData = (whitelistProof: WhitelistProof): UplcData => {
-  // whitelistProof is Some
-  const [whitelisted_value, mpt_proof] = whitelistProof;
-  return makeListData([
-    makeWhitelistedValueData(whitelisted_value),
-    buildMPTProofData(mpt_proof),
-  ]);
-};
-
-const buildProofsData = (proofs: Proofs): UplcData => {
-  const [assetNameProofs, whitelistProofOpt] = proofs;
-
-  return makeListData([
-    buildAssetNameProofsData(assetNameProofs),
+const buildProofsData = ([assetNameProofs, whitelistProofOpt]: Proofs): PlutusData =>
+  list([
+    list(assetNameProofs.map(buildAssetNameProofData)),
     makeOptionData(whitelistProofOpt, buildWhitelistProofData),
   ]);
-};
 
-const buildMintingDataMintRedeemer = (proofsList: Proofs[]): UplcData => {
-  return makeConstrData(0, [makeListData(proofsList.map(buildProofsData))]);
-};
+const buildMintingDataMintRedeemer = (proofsList: Proofs[]): PlutusData =>
+  constr(0, [list(proofsList.map(buildProofsData))]);
 
-const buildMintingDataUpdateMPTRedeemer = (): UplcData => {
-  return makeConstrData(1, []);
-};
+const buildMintingDataUpdateMPTRedeemer = (): PlutusData => constr(1);
 
 export {
   buildMintingData,

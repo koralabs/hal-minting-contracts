@@ -1,63 +1,44 @@
-import { TxOutputDatum } from "@helios-lang/ledger";
 import {
-  expectByteArrayData,
-  expectConstrData,
-  expectIntData,
-  makeByteArrayData,
-  makeConstrData,
-  makeIntData,
-  UplcData,
-} from "@helios-lang/uplc";
-
+  bytes,
+  constr,
+  expectBytes,
+  expectConstr,
+  expectInt,
+  int,
+  PlutusData,
+} from "../../cardano/index.js";
 import { invariant } from "../../helpers/index.js";
 import { OrderDatum } from "../types/index.js";
 import { buildAddressData, decodeAddressFromData } from "./common.js";
 
+/** `datum` is the order UTxO's inline datum (undefined when it has none). */
 const decodeOrderDatumData = (
-  datum: TxOutputDatum | undefined,
+  datum: PlutusData | undefined,
   isMainnet: boolean
 ): OrderDatum => {
-  invariant(
-    datum?.kind == "InlineTxOutputDatum",
-    "OrderDatum must be inline datum"
-  );
-  const datumData = datum.data;
-  const orderConstrData = expectConstrData(datumData, 0, 3);
-
-  const owner_key_hash = expectByteArrayData(orderConstrData.fields[0]).toHex();
-  const destination_address = decodeAddressFromData(
-    orderConstrData.fields[1],
-    isMainnet
-  );
-  const amount = Number(expectIntData(orderConstrData.fields[2]).value);
-
+  invariant(datum, "OrderDatum must be inline datum");
+  const { fields } = expectConstr(datum, "OrderDatum", 0, 3);
   return {
-    owner_key_hash,
-    destination_address,
-    amount,
+    owner_key_hash: expectBytes(fields[0], "owner_key_hash"),
+    destination_address: decodeAddressFromData(fields[1], isMainnet),
+    amount: Number(expectInt(fields[2], "amount")),
   };
 };
 
-const buildOrderDatumData = (order: OrderDatum): UplcData => {
+const buildOrderDatumData = (order: OrderDatum): PlutusData => {
   const { owner_key_hash, destination_address, amount } = order;
-  return makeConstrData(0, [
-    makeByteArrayData(owner_key_hash),
+  return constr(0, [
+    bytes(owner_key_hash),
     buildAddressData(destination_address),
-    makeIntData(amount),
+    int(amount),
   ]);
 };
 
-const buildOrdersSpendExecuteOrdersRedeemer = (): UplcData => {
-  return makeConstrData(0, []);
-};
+const buildOrdersSpendExecuteOrdersRedeemer = (): PlutusData => constr(0);
 
-const buildOrdersSpendCancelOrderRedeemer = (): UplcData => {
-  return makeConstrData(1, []);
-};
+const buildOrdersSpendCancelOrderRedeemer = (): PlutusData => constr(1);
 
-const buildOrdersSpendRefundOrderRedeemer = (): UplcData => {
-  return makeConstrData(2, []);
-};
+const buildOrdersSpendRefundOrderRedeemer = (): PlutusData => constr(2);
 
 export {
   buildOrderDatumData,

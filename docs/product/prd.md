@@ -126,7 +126,7 @@ Royalty updates, reference datum updates, and minting-data administration exist,
 - As a deployment operator, I can tell whether a planned change will rotate a script SubHandle, update settings only, or do nothing at all.
 
 ## Product Constraints
-- The repo depends on Cardano script semantics and Helios/Aiken contract packaging.
+- The repo depends on Cardano script semantics and Aiken contract packaging; off-chain code is `@cardano-sdk/core` only (no Helios since 2.0.0).
 - Some flows require live handle API and Blockfrost data to assemble or validate transactions.
 - Human wallet approval remains part of deployment, even when drift detection and artifact generation are automated.
 - Documentation must remain aligned with both the current code and the desired deployment model.
@@ -140,7 +140,7 @@ Royalty updates, reference datum updates, and minting-data administration exist,
 
 ### Observability
 - Deployment plan output must show enough detail for a reviewer to reason about drift and intended post-deploy state.
-- Tests must cover both emulator mint flows and deployment-planning logic.
+- Tests must cover ledger-emulator mint flows (with refusal cases) and deployment-planning logic.
 
 ### Operator clarity
 - Docs must explain which files are canonical for deployment truth.

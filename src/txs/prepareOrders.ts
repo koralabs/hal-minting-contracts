@@ -1,16 +1,12 @@
+// Order validation and aggregation into mint transactions.
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { ShelleyAddress, TxInput } from "@helios-lang/ledger";
 import { Err, Ok, Result } from "ts-res";
 
-import {
-  decodeOrderDatumData,
-  OrderDatum,
-  SettingsV1,
-  WhitelistedValue,
-} from "../contracts/index.js";
-import { mayFail } from "../helpers/index.js";
+import { inlineDatumOf, Utxo, utxoRef } from "../cardano/index.js";
+import { decodeOrderDatumData, OrderDatum, SettingsV1, WhitelistedValue } from "../contracts/index.js";
+import { convertError } from "../helpers/index.js";
 import { isOrderTxInputValid } from "./order.js";
-import { AggregatedOrder, ValidOrder } from "./types.js";
+import { AggregatedOrder } from "./types.js";
 import {
   getAvailableWhitelistedValue,
   getWhitelistedKey,
@@ -19,9 +15,134 @@ import {
   useWhitelistedValueAsPossible,
 } from "./whitelist.js";
 
+type CanMint =
+  | { status: "invalid" | "unprocessable"; reason: string }
+  | { status: "valid"; needWhitelistProof: boolean; newWhitelistedValue: WhitelistedValue | null };
+
+const checkCanMintOrder = (
+  amount: number,
+  lovelace: bigint,
+  halNftPrice: bigint,
+  txTimeGap: number,
+  whitelistedValue: WhitelistedValue | null,
+  allWhitelistedValue: WhitelistedValue | null
+): CanMint => {
+  if (!whitelistedValue || whitelistedValue.length == 0) {
+    // Not whitelisted (for this time gap): public price, only after minting_start_time.
+    const expectedLovelace = halNftPrice * BigInt(amount);
+    if (txTimeGap >= 0)
+      return { status: "unprocessable", reason: "not whitelisted enough; wait till minting_start_time" };
+    if (lovelace >= expectedLovelace)
+      return { status: "valid", needWhitelistProof: false, newWhitelistedValue: whitelistedValue };
+    return { status: "invalid", reason: `need ${expectedLovelace} but has only ${lovelace}` };
+  }
+
+  const { newWhitelistedValue, remainingOrderedAmount, spentLovelaceForWhitelisted } =
+    updateWhitelistedValue(whitelistedValue, amount, txTimeGap);
+
+  // Even using every whitelisted discount the address has, the order must cover its cost.
+  if (allWhitelistedValue) {
+    const best = useWhitelistedValueAsPossible(allWhitelistedValue, amount);
+    const possibleExpectedLovelace =
+      best.spentLovelaceForWhitelisted + halNftPrice * BigInt(best.remainingOrderedAmount);
+    if (lovelace < possibleExpectedLovelace)
+      return {
+        status: "invalid",
+        reason: `need ${possibleExpectedLovelace} even as whitelisted but has only ${lovelace}`,
+      };
+  }
+
+  if (remainingOrderedAmount > 0) {
+    // Part of the order is not covered by the whitelist: only after minting_start_time.
+    if (txTimeGap >= 0)
+      return {
+        status: "unprocessable",
+        reason: "cannot be minted ALL as whitelisted; wait till minting_start_time",
+      };
+    const expectedLovelace = halNftPrice * BigInt(remainingOrderedAmount) + spentLovelaceForWhitelisted;
+    if (lovelace >= expectedLovelace)
+      return { status: "valid", needWhitelistProof: true, newWhitelistedValue };
+    return {
+      status: "unprocessable",
+      reason: `need ${expectedLovelace} for SOME as whitelisted but has only ${lovelace}`,
+    };
+  }
+
+  if (lovelace >= spentLovelaceForWhitelisted)
+    return { status: "valid", needWhitelistProof: true, newWhitelistedValue };
+  return {
+    status: "unprocessable",
+    reason: `need ${spentLovelaceForWhitelisted} for ALL as whitelisted but has only ${lovelace}`,
+  };
+};
+
+/**
+ * Greedy, stable "sum-to-7" ordering: scanning left to right, each order is followed by the
+ * fewest later orders that complete a group of exactly 7 HALs, when such a group exists.
+ */
+function orderToConsecutiveSum7<T extends { datum: { amount: number } }>(orders: T[]): T[] {
+  const n = orders.length;
+  const used: boolean[] = Array(n).fill(false);
+  const out: T[] = [];
+
+  const pick = (i: number, target: number, len: number): number[] | null => {
+    if (!len) return target ? null : [];
+    for (let j = i + 1; j < n; j++) {
+      if (used[j]) continue;
+      const v = orders[j].datum.amount;
+      if (v > target) continue;
+      const tail = pick(j, target - v, len - 1);
+      if (tail) return [j, ...tail];
+    }
+    return null;
+  };
+
+  for (let i = 0; i < n; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    out.push(orders[i]);
+    const a = orders[i].datum.amount;
+    if (a >= 7) continue;
+    const need = 7 - a;
+    for (let len = 1; len <= need; len++) {
+      const combo = pick(i, need, len);
+      if (combo) {
+        for (const j of combo) {
+          used[j] = true;
+          out.push(orders[j]);
+        }
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+const addOrderToAggregatedOrders = (
+  aggregated: AggregatedOrder[],
+  utxo: Utxo,
+  destinationAddress: string,
+  amount: number,
+  needWhitelistProof: boolean
+): AggregatedOrder[] => {
+  const existing = aggregated.find((o) => o.destinationAddress === destinationAddress);
+  if (!existing)
+    return [...aggregated, { destinationAddress, amount, orderTxInputs: [utxo], needWhitelistProof }];
+  return aggregated.map((o) =>
+    o === existing
+      ? {
+          destinationAddress,
+          amount: o.amount + amount,
+          orderTxInputs: [...o.orderTxInputs, utxo],
+          needWhitelistProof: o.needWhitelistProof || needWhitelistProof,
+        }
+      : o
+  );
+};
+
 interface PrepareOrdersParams {
   isMainnet: boolean;
-  orderTxInputs: TxInput[];
+  orderTxInputs: Utxo[];
   settingsV1: SettingsV1;
   whitelistDB: Trie;
   mintingTime: number;
@@ -32,10 +153,17 @@ interface PrepareOrdersParams {
 
 interface PreparedOrdersResult {
   aggregatedOrdersList: Array<AggregatedOrder[]>;
-  unpickedOrderTxInputs: TxInput[];
-  invalidOrderTxInputs: TxInput[];
+  /** Valid orders left for a later run. */
+  unpickedOrderTxInputs: Utxo[];
+  /** Orders to refund: malformed, underpaid, or not mintable now. */
+  invalidOrderTxInputs: Utxo[];
+  invalidOrderReasons: Record<string, string>;
 }
 
+/**
+ * @description Validate order UTxOs and aggregate them (by destination address) into at most
+ * `maxTxsPerLambda` mint transactions of at most `maxOrderAmountInOneTx` HALs each.
+ */
 const prepareOrders = async (
   params: PrepareOrdersParams
 ): Promise<Result<PreparedOrdersResult, Error>> => {
@@ -50,512 +178,96 @@ const prepareOrders = async (
     remainingHals,
   } = params;
 
-  // first check order TxInput is valid or not
-  const validOrderTxInputs: TxInput[] = [];
-  const invalidOrderTxInputs: TxInput[] = [];
-  for (const orderTxInput of orderTxInputs) {
-    const isValidResult = isOrderTxInputValid({
-      isMainnet,
-      orderTxInput,
-      settingsV1,
-      maxOrderAmountInOneTx,
-    });
-    if (isValidResult.ok) {
-      validOrderTxInputs.push(orderTxInput);
-    } else {
-      console.error(
-        `Order UTxO ${orderTxInput.id.toString()} is invalid: ${
-          isValidResult.error
-        }`
-      );
-      invalidOrderTxInputs.push(orderTxInput);
-    }
-  }
+  try {
+    const invalidOrderTxInputs: Utxo[] = [];
+    const invalidOrderReasons: Record<string, string> = {};
+    const invalid = (utxo: Utxo, reason: string) => {
+      invalidOrderTxInputs.push(utxo);
+      invalidOrderReasons[utxoRef(utxo)] = reason;
+    };
 
-  // aggregate orders
-  const aggregatedResult = await aggregateOrderTxInputs({
-    isMainnet,
-    orderTxInputs: validOrderTxInputs,
-    settingsV1,
-    whitelistDB,
-    mintingTime,
-    maxOrderAmountInOneTx,
-    maxTxsPerLambda,
-    remainingHals,
-  });
-  if (!aggregatedResult.ok) {
-    return Err(
-      new Error(`Failed to aggregate orders: ${aggregatedResult.error}`)
-    );
-  }
-  const {
-    aggregatedOrdersList,
-    unpickedOrderTxInputs,
-    invalidOrderTxInputs: additionalInvalidOrderTxInputs,
-  } = aggregatedResult.data;
-
-  return Ok({
-    aggregatedOrdersList,
-    unpickedOrderTxInputs,
-    invalidOrderTxInputs: [
-      ...invalidOrderTxInputs,
-      ...additionalInvalidOrderTxInputs,
-    ],
-  });
-};
-
-interface AggregateOrderTxInputsParams {
-  isMainnet: boolean;
-  orderTxInputs: TxInput[];
-  settingsV1: SettingsV1;
-  whitelistDB: Trie;
-  mintingTime: number;
-  maxOrderAmountInOneTx: number;
-  maxTxsPerLambda: number;
-  remainingHals: number;
-}
-
-/**
- * @description Aggregate Orders Tx Inputs
- * @param {AggregateOrderTxInputsParams} params
- * @returns {Result<AggregatedOrder[],  Error>} Result or Error
- */
-const aggregateOrderTxInputs = async (
-  params: AggregateOrderTxInputsParams
-): Promise<
-  Result<
-    {
-      aggregatedOrdersList: Array<AggregatedOrder[]>;
-      unpickedOrderTxInputs: TxInput[];
-      invalidOrderTxInputs: TxInput[];
-    },
-    Error
-  >
-> => {
-  const {
-    isMainnet,
-    orderTxInputs,
-    settingsV1,
-    whitelistDB,
-    mintingTime,
-    maxOrderAmountInOneTx,
-    maxTxsPerLambda,
-    remainingHals,
-  } = params;
-  const unpickedOrderTxInputs: TxInput[] = [];
-  const invalidOrderTxInputs: TxInput[] = [];
-
-  const { hal_nft_price, minting_start_time } = settingsV1;
-  const txTimeGap = minting_start_time - mintingTime;
-
-  // get Order Datum
-  const orderTxInputsWithDatum: {
-    txInput: TxInput;
-    datum: OrderDatum;
-  }[] = [];
-  for (const orderTxInput of orderTxInputs) {
-    const decodedResult = mayFail(() =>
-      decodeOrderDatumData(orderTxInput.datum, isMainnet)
-    );
-    if (!decodedResult.ok) {
-      return Err(
-        new Error(
-          `Invalid Order Datum while aggregating orders: ${decodedResult.error}`
-        )
-      );
-    }
-
-    if (decodedResult.data.amount === 0) {
-      invalidOrderTxInputs.push(orderTxInput);
-      continue;
-    }
-
-    orderTxInputsWithDatum.push({
-      txInput: orderTxInput,
-      datum: decodedResult.data,
-    });
-  }
-
-  // NOTE:
-  // efficient sorting algorithm
-  const refinedOrderTxInputsWithDatum = orderToConsecutiveSum7(
-    orderTxInputsWithDatum
-  );
-
-  // we keep WhitelistedValue by destination_address CBOR Hex to check
-  const whitelistedValues: Record<string, WhitelistedValue | null> = {};
-  const availableWhitelistedValues: Record<string, WhitelistedValue | null> =
-    {};
-
-  // this is processing state
-  const validOrders: ValidOrder[] = [];
-
-  for (const { txInput, datum } of refinedOrderTxInputsWithDatum) {
-    const { destination_address, amount } = datum;
-
-    // get whitelisted value if destination_address is not in whitelistedValues
-    const destinationAddressKey =
-      getWhitelistedKey(destination_address).toString("hex");
-    if (!(destinationAddressKey in whitelistedValues)) {
-      const value = await getWhitelistedValue(whitelistDB, destination_address);
-      // get available ones by minting time
-      whitelistedValues[destinationAddressKey] = value;
-      availableWhitelistedValues[destinationAddressKey] = value
-        ? getAvailableWhitelistedValue(value, txTimeGap)
-        : null;
-    }
-
-    // check with whitelisted value (for discounted price)
-    const availableWhitelistedValue =
-      availableWhitelistedValues[destinationAddressKey];
-    const allWhitelistedValue = whitelistedValues[destinationAddressKey];
-
-    // check orderInput is valid to mint or not
-    const canMintResult = checkCanMintOrder(
-      txInput.id.toString(),
-      destination_address.toBech32(),
-      amount,
-      txInput.value.lovelace,
-      hal_nft_price,
-      txTimeGap,
-      availableWhitelistedValue,
-      allWhitelistedValue
-    );
-
-    if (canMintResult.status === "valid") {
-      // update whitelisted value
-      whitelistedValues[destinationAddressKey] =
-        canMintResult.newWhitelistedValue;
-
-      validOrders.push({
-        txInput,
-        destinationAddress: destination_address,
-        amount,
-        needWhitelistProof: canMintResult.needWhitelistProof,
-        addedToTx: false,
-      });
-    } else {
-      // we will refund unprocessable orders
-      // users can wait to get this UTxO minted but we refund them.
-      invalidOrderTxInputs.push(txInput);
-    }
-  }
-
-  // build aggregatedOrdersList
-  let halsLeftToMint = remainingHals;
-  const aggregatedOrdersList: Array<AggregatedOrder[]> = [];
-  while (halsLeftToMint > 0) {
-    let tx: AggregatedOrder[] = [];
-    // fill aggregatedOrders with as many orders as possible
-    for (const order of validOrders) {
-      if (order.addedToTx) {
+    const withDatum: { utxo: Utxo; datum: OrderDatum }[] = [];
+    for (const utxo of orderTxInputs) {
+      const check = isOrderTxInputValid({ isMainnet, orderTxInput: utxo, settingsV1, maxOrderAmountInOneTx });
+      if (!check.ok) {
+        invalid(utxo, check.error.message);
         continue;
       }
-      const currentTxAmount = tx.reduce(
-        (total, { amount }) => amount + total,
-        0
-      );
-      const availableAmount = Math.min(halsLeftToMint, maxOrderAmountInOneTx);
-      if (currentTxAmount + order.amount <= availableAmount) {
-        // we have enough H.A.L.s left for this transaction
-        order.addedToTx = true;
-        tx = addOrderToAggregatedOrders(
-          tx,
-          order.txInput,
-          order.destinationAddress,
-          order.amount,
-          order.needWhitelistProof
-        );
-      }
+      withDatum.push({ utxo, datum: decodeOrderDatumData(inlineDatumOf(utxo), isMainnet) });
     }
 
-    if (tx.length > 0) {
-      aggregatedOrdersList.push(tx);
-      // reduce halsLeftToMint
-      const txAmount = tx.reduce((total, { amount }) => amount + total, 0);
-      halsLeftToMint = halsLeftToMint - txAmount;
-    } else {
-      // if tx is empty, break the loop
-      // because there is no available orders to pick
-      break;
-    }
-
-    if (aggregatedOrdersList.length >= maxTxsPerLambda) {
-      break;
-    }
-  }
-
-  // collect orders which are not picked
-  // and put them to unpickedOrderTxInputs if its amount is less than or equal to halsLeftToMint
-  // otherwise put them to invalidOrderTxInputs
-  validOrders
-    .filter((o) => !o.addedToTx)
-    .forEach((o) => {
-      if (o.amount <= halsLeftToMint) {
-        unpickedOrderTxInputs.push(o.txInput);
-      } else {
-        invalidOrderTxInputs.push(o.txInput);
-      }
-    });
-
-  return Ok({
-    aggregatedOrdersList,
-    unpickedOrderTxInputs,
-    invalidOrderTxInputs,
-  });
-};
-
-const addOrderToAggregatedOrders = (
-  aggregatedOrders: AggregatedOrder[],
-  orderTxInput: TxInput,
-  address: ShelleyAddress,
-  amount: number,
-  needWhitelistProof: boolean
-): AggregatedOrder[] => {
-  const newAggregatedOrders: AggregatedOrder[] = [];
-
-  let added: boolean = false;
-  for (const aggregatedOrder of aggregatedOrders) {
-    const {
-      destinationAddress,
-      amount: aggregatedAmount,
-      orderTxInputs,
-      needWhitelistProof: originalNeedWhitelistProof,
-    } = aggregatedOrder;
-    if (address.toHex() === destinationAddress.toHex()) {
-      added = true;
-      newAggregatedOrders.push({
-        destinationAddress,
-        amount: aggregatedAmount + amount,
-        orderTxInputs: [...orderTxInputs, orderTxInput],
-        needWhitelistProof: originalNeedWhitelistProof || needWhitelistProof,
-      });
-    } else {
-      newAggregatedOrders.push(aggregatedOrder);
-    }
-  }
-  if (!added) {
-    newAggregatedOrders.push({
-      destinationAddress: address,
-      amount,
-      orderTxInputs: [orderTxInput],
-      needWhitelistProof,
-    });
-  }
-
-  return newAggregatedOrders;
-};
-
-const checkCanMintOrder = (
-  orderTxInputId: string,
-  destinationAddress: string,
-  amount: number,
-  lovelace: bigint,
-  halNftPrice: bigint,
-  txTimeGap: number,
-  whitelistedValue: WhitelistedValue | null,
-  allWhitelistedValue: WhitelistedValue | null
-):
-  | { status: "invalid" | "unprocessable" }
-  | {
-      status: "valid";
+    const txTimeGap = settingsV1.minting_start_time - mintingTime;
+    const whitelistedValues: Record<string, WhitelistedValue | null> = {};
+    const availableWhitelistedValues: Record<string, WhitelistedValue | null> = {};
+    const validOrders: {
+      utxo: Utxo;
+      destinationAddress: string;
+      amount: number;
       needWhitelistProof: boolean;
-      newWhitelistedValue: WhitelistedValue | null;
-    } => {
-  if (!whitelistedValue || whitelistedValue.length == 0) {
-    // if no whitelisted value or whitelisted value is empty
-    // txTimeGap must be less than 0
-    // and there is no discount
-    const expectedLovelace = halNftPrice * BigInt(amount);
-    if (txTimeGap < 0) {
-      if (lovelace >= expectedLovelace) {
-        return {
-          status: "valid",
-          needWhitelistProof: false,
-          newWhitelistedValue: whitelistedValue,
-        };
-      } else {
-        console.error(
-          `Order UTxO ${orderTxInputId} failed to be processed. Need ${expectedLovelace} but has only ${lovelace}`
-        );
-        return {
-          status: "invalid",
-        };
+      addedToTx: boolean;
+    }[] = [];
+
+    for (const { utxo, datum } of orderToConsecutiveSum7(withDatum)) {
+      const { destination_address, amount } = datum;
+      const key = getWhitelistedKey(destination_address).toString("hex");
+      if (!(key in whitelistedValues)) {
+        const value = await getWhitelistedValue(whitelistDB, destination_address);
+        whitelistedValues[key] = value;
+        availableWhitelistedValues[key] = value ? getAvailableWhitelistedValue(value, txTimeGap) : null;
       }
-    } else {
-      console.error(
-        `Order UTxO ${orderTxInputId} failed to be processed as Whitelisted enough. ${destinationAddress} not whitelisted enough. Wait till minting_start_time`,
-        {
-          whitelistedValue,
-          txTimeGap,
+
+      const canMint = checkCanMintOrder(
+        amount,
+        utxo[1].value.coins,
+        settingsV1.hal_nft_price,
+        txTimeGap,
+        availableWhitelistedValues[key],
+        whitelistedValues[key]
+      );
+      if (canMint.status === "valid") {
+        whitelistedValues[key] = canMint.newWhitelistedValue;
+        validOrders.push({
+          utxo,
+          destinationAddress: destination_address,
           amount,
-          expectedLovelace,
-          lovelace,
-        }
-      );
-      return {
-        status: "unprocessable",
-      };
-    }
-  } else {
-    // then use whitelisted value based on minting time
-    const {
-      newWhitelistedValue,
-      remainingOrderedAmount,
-      spentLovelaceForWhitelisted,
-    } = updateWhitelistedValue(whitelistedValue, amount, txTimeGap);
-
-    // we also check in case if user can use all of his current whitelisted value
-    // if he has at more than possibleExpectedLovelace
-    if (allWhitelistedValue) {
-      const useWhitelistedValueAsPossibleResult = useWhitelistedValueAsPossible(
-        allWhitelistedValue,
-        amount
-      );
-      const possibleExpectedLovelace =
-        useWhitelistedValueAsPossibleResult.spentLovelaceForWhitelisted +
-        halNftPrice *
-          BigInt(useWhitelistedValueAsPossibleResult.remainingOrderedAmount);
-      if (lovelace < possibleExpectedLovelace) {
-        console.error(
-          `Order UTxO ${orderTxInputId} failed to be processed even as whitelisted. Need ${possibleExpectedLovelace} but has only ${lovelace}`,
-          {
-            allWhitelistedValue,
-            amount,
-            possibleExpectedLovelace,
-            lovelace,
-          }
-        );
-        return {
-          status: "invalid",
-        };
+          needWhitelistProof: canMint.needWhitelistProof,
+          addedToTx: false,
+        });
+      } else {
+        // Orders that cannot be minted now are refunded (users may not wait for them).
+        invalid(utxo, `${canMint.status}: ${canMint.reason}`);
       }
     }
 
-    if (remainingOrderedAmount > 0) {
-      // can not mint all as whitelisted
-      // must be after minting_start_time
-      if (txTimeGap < 0) {
-        const expectedLovelace =
-          halNftPrice * BigInt(remainingOrderedAmount) +
-          spentLovelaceForWhitelisted;
-        if (lovelace >= expectedLovelace) {
-          return {
-            status: "valid",
-            needWhitelistProof: true,
-            newWhitelistedValue,
-          };
-        } else {
-          console.error(
-            `Order UTxO ${orderTxInputId} failed to be processed SOME as whitelisted. Need ${expectedLovelace} but has only ${lovelace}`,
-            {
-              whitelistedValue,
-              txTimeGap,
-              amount,
-              expectedLovelace,
-              lovelace,
-            }
-          );
-          return {
-            status: "unprocessable",
-          };
+    let halsLeftToMint = remainingHals;
+    const aggregatedOrdersList: AggregatedOrder[][] = [];
+    while (halsLeftToMint > 0) {
+      let tx: AggregatedOrder[] = [];
+      for (const order of validOrders) {
+        if (order.addedToTx) continue;
+        const currentTxAmount = tx.reduce((total, { amount }) => amount + total, 0);
+        if (currentTxAmount + order.amount <= Math.min(halsLeftToMint, maxOrderAmountInOneTx)) {
+          order.addedToTx = true;
+          tx = addOrderToAggregatedOrders(tx, order.utxo, order.destinationAddress, order.amount, order.needWhitelistProof);
         }
-      } else {
-        console.error(
-          `Order UTxO ${orderTxInputId} couldn't be minted ALL as whitelisted. So wait till minting_start_time`,
-          {
-            whitelistedValue,
-            txTimeGap,
-            amount,
-            remainingOrderedAmount,
-          }
-        );
-        return {
-          status: "unprocessable",
-        };
       }
-    } else {
-      // this means we can mint ALL as whitelisted
-      // so only check if there is enough lovelace
-      const expectedLovelace = spentLovelaceForWhitelisted;
-      if (lovelace >= expectedLovelace) {
-        return {
-          status: "valid",
-          needWhitelistProof: true,
-          newWhitelistedValue,
-        };
-      } else {
-        console.error(
-          `Order UTxO ${orderTxInputId} failed to be processed ALL as whitelisted. Need ${expectedLovelace} but has only ${lovelace}`,
-          {
-            whitelistedValue,
-            txTimeGap,
-            amount,
-            expectedLovelace,
-            lovelace,
-          }
-        );
-        return {
-          status: "unprocessable",
-        };
-      }
+      if (tx.length === 0) break;
+      aggregatedOrdersList.push(tx);
+      halsLeftToMint -= tx.reduce((total, { amount }) => amount + total, 0);
+      if (aggregatedOrdersList.length >= maxTxsPerLambda) break;
     }
+
+    const unpickedOrderTxInputs: Utxo[] = [];
+    for (const order of validOrders.filter((o) => !o.addedToTx)) {
+      if (order.amount <= halsLeftToMint) unpickedOrderTxInputs.push(order.utxo);
+      else invalid(order.utxo, `not enough HALs left (${halsLeftToMint}) for ${order.amount}`);
+    }
+
+    return Ok({ aggregatedOrdersList, unpickedOrderTxInputs, invalidOrderTxInputs, invalidOrderReasons });
+  } catch (error) {
+    return Err(new Error(`Failed to prepare orders: ${convertError(error)}`));
   }
 };
 
-export type { AggregateOrderTxInputsParams, PrepareOrdersParams };
-export { aggregateOrderTxInputs, prepareOrders };
-
-/**
- * Greedy, stable "sum-to-7" ordering over consecutive items.
- * - Scans left-to-right in original order.
- * - At each position, tries to find the shortest-length consecutive run that sums to 7.
- * - If found, emits that run (in-order).
- * - Otherwise, emits the single current item.
- *
- * @template T extends { amount: number }
- * @param {T[]} items
- * @returns {T[]} flat list, reordered by the rule above (stable within each chosen run)
- */
-export function orderToConsecutiveSum7(
-  orderTxInputsWithDatum: { txInput: TxInput; datum: OrderDatum }[]
-) {
-  const n = orderTxInputsWithDatum.length;
-  const used = Array(n).fill(false);
-  const out: { txInput: TxInput; datum: OrderDatum }[] = [];
-
-  const pick = (i: number, target: number, len: number): number[] | null => {
-    // earliest, consecutive-in-order combo
-    if (!len) return target ? null : [];
-    for (let j = i + 1; j < n; j++) {
-      if (used[j]) continue;
-      const v = orderTxInputsWithDatum[j].datum.amount;
-      if (v > target) continue; // amounts > 0
-      const tail = pick(j, target - v, len - 1);
-      if (tail) return [j, ...tail];
-    }
-    return null;
-  };
-
-  for (let i = 0; i < n; i++) {
-    if (used[i]) continue;
-    used[i] = true;
-    out.push(orderTxInputsWithDatum[i]);
-
-    const a = orderTxInputsWithDatum[i].datum.amount;
-    if (a >= 7) continue; // 7 => solo; >7 can’t help with positives
-
-    const need = 7 - a;
-    for (let len = 1; len <= need; len++) {
-      const combo = pick(i, need, len);
-      if (combo) {
-        for (const j of combo) {
-          used[j] = true;
-          out.push(orderTxInputsWithDatum[j]);
-        }
-        break; // prefer the fewest partners
-      }
-    }
-  }
-  return out;
-}
+export type { PrepareOrdersParams, PreparedOrdersResult };
+export { orderToConsecutiveSum7, prepareOrders };

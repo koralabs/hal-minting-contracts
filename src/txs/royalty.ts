@@ -1,20 +1,14 @@
-import { ByteArrayLike, IntLike } from "@helios-lang/codec-utils";
-import {
-  makeAddress,
-  makeAssetClass,
-  makeAssets,
-  makeInlineTxOutputDatum,
-  makeMintingPolicyHash,
-  makePubKeyHash,
-  makeStakingAddress,
-  makeStakingValidatorHash,
-  makeValidatorHash,
-  makeValue,
-  TxInput,
-} from "@helios-lang/ledger";
-import { makeTxBuilder, TxBuilder } from "@helios-lang/tx-utils";
 import { Err, Ok, Result } from "ts-res";
 
+import {
+  assetId,
+  Cardano,
+  holdsAsset,
+  inlineDatumOf,
+  scriptAddress,
+  scriptRewardAccount,
+  Utxo,
+} from "../cardano/index.js";
 import { ROYALTY_ASSET_FULL_NAME } from "../constants/index.js";
 import {
   buildMintMintRoyaltyNFTRedeemer,
@@ -23,202 +17,99 @@ import {
   decodeSettingsV1Data,
   makeVoidData,
   RoyaltyDatum,
+  SettingsV1,
 } from "../contracts/index.js";
 import { mayFail } from "../helpers/index.js";
 import { DeployedScripts } from "./deploy.js";
+import { HalTxPlan, referTo } from "./plan.js";
+
+const settingsV1Of = (settingsAssetTxInput: Utxo, isMainnet: boolean): Result<SettingsV1, Error> => {
+  const settingsResult = mayFail(() => decodeSettingsDatum(inlineDatumOf(settingsAssetTxInput)));
+  if (!settingsResult.ok) return Err(new Error(`Failed to decode settings: ${settingsResult.error}`));
+  const settingsV1Result = mayFail(() => decodeSettingsV1Data(settingsResult.data.data, isMainnet));
+  if (!settingsV1Result.ok)
+    return Err(new Error(`Failed to decode settings v1: ${settingsV1Result.error}`));
+  return Ok(settingsV1Result.data);
+};
+
+const royaltyOutput = (policyId: string, royaltySpendScriptHash: string, isMainnet: boolean, datum: RoyaltyDatum): Cardano.TxOut => ({
+  address: scriptAddress(royaltySpendScriptHash, isMainnet) as Cardano.PaymentAddress,
+  value: { coins: BigInt(0), assets: new Map([[assetId(policyId, ROYALTY_ASSET_FULL_NAME), BigInt(1)]]) },
+  datum: buildRoyaltyDatumData(datum).toCore(),
+});
 
 interface MintRoyaltyParams {
   isMainnet: boolean;
   royaltyDatum: RoyaltyDatum;
   deployedScripts: DeployedScripts;
-  settingsAssetTxInput: TxInput;
+  settingsAssetTxInput: Utxo;
 }
 
 /**
- * @description Mint Royalty token
- * @param {RequestParams} params
- * @returns {Promise<Result<TxBuilder,  Error>>} Transaction Result
+ * @description Mint the CIP-102 Royalty token (mint withdrawal `MintRoyaltyNFT`, allowed minter
+ * signs) to the royalty_spend validator.
  */
-const mintRoyalty = async (
-  params: MintRoyaltyParams
-): Promise<Result<TxBuilder, Error>> => {
-  const { isMainnet, royaltyDatum, deployedScripts, settingsAssetTxInput } =
-    params;
+const mintRoyalty = async (params: MintRoyaltyParams): Promise<Result<HalTxPlan, Error>> => {
+  const { isMainnet, royaltyDatum, deployedScripts, settingsAssetTxInput } = params;
+  const { mintProxyScriptTxInput, mintScriptDetails, mintScriptTxInput } = deployedScripts;
 
-  const { mintProxyScriptTxInput, mintScriptDetails, mintScriptTxInput } =
-    deployedScripts;
+  const settingsV1 = settingsV1Of(settingsAssetTxInput, isMainnet);
+  if (!settingsV1.ok) return settingsV1;
+  const { policy_id, allowed_minter, royalty_spend_script_hash } = settingsV1.data;
 
-  // decode settings
-  const settingsResult = mayFail(() =>
-    decodeSettingsDatum(settingsAssetTxInput.datum)
-  );
-  if (!settingsResult.ok) {
-    return Err(new Error(`Failed to decode settings: ${settingsResult.error}`));
-  }
-  const { data: settingsV1Data } = settingsResult.data;
-  const settingsV1Result = mayFail(() =>
-    decodeSettingsV1Data(settingsV1Data, isMainnet)
-  );
-  if (!settingsV1Result.ok) {
-    return Err(
-      new Error(`Failed to decode settings v1: ${settingsV1Result.error}`)
-    );
-  }
-  const { policy_id, allowed_minter, royalty_spend_script_hash } =
-    settingsV1Result.data;
-
-  const royaltySpendScriptAddress = makeAddress(
-    isMainnet,
-    makeValidatorHash(royalty_spend_script_hash)
-  );
-
-  // hal policy id
-  const halPolicyHash = makeMintingPolicyHash(policy_id);
-
-  // make Mint V1 Mint Royalty NFT Redeemer
-  const mintMintRoyaltyNFTRedeemer = buildMintMintRoyaltyNFTRedeemer();
-
-  // make token value to mint
-  const royaltyTokenValue: [ByteArrayLike, IntLike][] = [
-    [ROYALTY_ASSET_FULL_NAME, 1n],
-  ];
-
-  // make royalty NFT value
-  const royaltyNFTValue = makeValue(
-    1n,
-    makeAssets([
-      [makeAssetClass(`${policy_id}.${ROYALTY_ASSET_FULL_NAME}`), 1n],
-    ])
-  );
-
-  // start building tx
-  const txBuilder = makeTxBuilder({
-    isMainnet,
+  return Ok({
+    inputs: [],
+    outputs: [royaltyOutput(policy_id, royalty_spend_script_hash, isMainnet, royaltyDatum)],
+    mint: [
+      {
+        policyId: policy_id,
+        assets: new Map([[ROYALTY_ASSET_FULL_NAME, BigInt(1)]]),
+        redeemer: makeVoidData(),
+      },
+    ],
+    withdrawals: [
+      {
+        rewardAccount: scriptRewardAccount(mintScriptDetails.validatorHash, isMainnet),
+        quantity: BigInt(0),
+        redeemer: buildMintMintRoyaltyNFTRedeemer(),
+      },
+    ],
+    requiredSigners: [allowed_minter],
+    ...referTo([settingsAssetTxInput, mintProxyScriptTxInput, mintScriptTxInput]),
   });
-
-  // <-- add required signer
-  txBuilder.addSigners(makePubKeyHash(allowed_minter));
-
-  // <-- attach settings asset as reference input
-  txBuilder.refer(settingsAssetTxInput);
-
-  // <-- attach deployed scripts
-  txBuilder.refer(mintProxyScriptTxInput, mintScriptTxInput);
-
-  // <-- withdraw from mint withdrawal validator (script from reference input)
-  txBuilder.withdrawUnsafe(
-    makeStakingAddress(
-      isMainnet,
-      makeStakingValidatorHash(mintScriptDetails.validatorHash)
-    ),
-    0n,
-    mintMintRoyaltyNFTRedeemer
-  );
-
-  // <-- mint royalty NFT
-  txBuilder.mintPolicyTokensUnsafe(
-    halPolicyHash,
-    royaltyTokenValue,
-    makeVoidData()
-  );
-
-  // <-- pay royalty NFT to royalty spend script address
-  txBuilder.payUnsafe(
-    royaltySpendScriptAddress,
-    royaltyNFTValue,
-    makeInlineTxOutputDatum(buildRoyaltyDatumData(royaltyDatum))
-  );
-
-  return Ok(txBuilder);
 };
 
 interface UpdateRoyaltyParams {
   isMainnet: boolean;
-  royaltyTxInput: TxInput;
+  royaltyTxInput: Utxo;
   newRoyaltyDatum: RoyaltyDatum;
   deployedScripts: DeployedScripts;
-  settingsAssetTxInput: TxInput;
+  settingsAssetTxInput: Utxo;
   royaltySpendAdmin: string;
 }
 
 /**
- * @description Mint Royalty token
- * @param {RequestParams} params
- * @returns {Promise<Result<TxBuilder,  Error>>} Transaction Result
+ * @description Update the Royalty token's datum (royalty_spend `Update`, royalty admin signs)
  */
-const updateRoyalty = async (
-  params: UpdateRoyaltyParams
-): Promise<Result<TxBuilder, Error>> => {
-  const {
-    isMainnet,
-    royaltyTxInput,
-    newRoyaltyDatum,
-    deployedScripts,
-    settingsAssetTxInput,
-    royaltySpendAdmin,
-  } = params;
-
+const updateRoyalty = async (params: UpdateRoyaltyParams): Promise<Result<HalTxPlan, Error>> => {
+  const { isMainnet, royaltyTxInput, newRoyaltyDatum, deployedScripts, settingsAssetTxInput, royaltySpendAdmin } =
+    params;
   const { royaltySpendScriptTxInput } = deployedScripts;
 
-  // decode settings
-  const settingsResult = mayFail(() =>
-    decodeSettingsDatum(settingsAssetTxInput.datum)
-  );
-  if (!settingsResult.ok) {
-    return Err(new Error(`Failed to decode settings: ${settingsResult.error}`));
-  }
-  const { data: settingsV1Data } = settingsResult.data;
-  const settingsV1Result = mayFail(() =>
-    decodeSettingsV1Data(settingsV1Data, isMainnet)
-  );
-  if (!settingsV1Result.ok) {
-    return Err(
-      new Error(`Failed to decode settings v1: ${settingsV1Result.error}`)
-    );
-  }
-  const { policy_id, royalty_spend_script_hash } = settingsV1Result.data;
-  const royaltySpendScriptAddress = makeAddress(
-    isMainnet,
-    makeValidatorHash(royalty_spend_script_hash)
-  );
+  const settingsV1 = settingsV1Of(settingsAssetTxInput, isMainnet);
+  if (!settingsV1.ok) return settingsV1;
+  const { policy_id, royalty_spend_script_hash } = settingsV1.data;
 
-  const royaltyAssetClass = makeAssetClass(
-    `${policy_id}.${ROYALTY_ASSET_FULL_NAME}`
-  );
-  const royaltyNFTValue = makeValue(1n, makeAssets([[royaltyAssetClass, 1n]]));
-
-  // check RoyaltyTxInput has Royalty Token
-  const hasRoyaltyToken =
-    royaltyTxInput.value.assets.hasAssetClass(royaltyAssetClass);
-  if (!hasRoyaltyToken) {
+  if (!holdsAsset(royaltyTxInput, assetId(policy_id, ROYALTY_ASSET_FULL_NAME))) {
     return Err(new Error("Royalty Token not found in RoyaltyTxInput"));
   }
 
-  // start building tx
-  const txBuilder = makeTxBuilder({
-    isMainnet,
+  return Ok({
+    inputs: [{ utxo: royaltyTxInput, redeemer: makeVoidData() }],
+    outputs: [royaltyOutput(policy_id, royalty_spend_script_hash, isMainnet, newRoyaltyDatum)],
+    requiredSigners: [royaltySpendAdmin],
+    ...referTo([settingsAssetTxInput, royaltySpendScriptTxInput]),
   });
-
-  // <-- attach settings asset as reference input
-  txBuilder.refer(settingsAssetTxInput);
-
-  // <-- attach deployed scripts
-  txBuilder.refer(royaltySpendScriptTxInput);
-
-  // <-- add royalty spend admin signer
-  txBuilder.addSigners(makePubKeyHash(royaltySpendAdmin));
-
-  // <-- spend Royalty Token
-  txBuilder.spendUnsafe(royaltyTxInput, makeVoidData());
-
-  // <-- send Royalty Token with updated Royalty Datum
-  txBuilder.payUnsafe(
-    royaltySpendScriptAddress,
-    royaltyNFTValue,
-    makeInlineTxOutputDatum(buildRoyaltyDatumData(newRoyaltyDatum))
-  );
-
-  return Ok(txBuilder);
 };
 
 export type { MintRoyaltyParams, UpdateRoyaltyParams };

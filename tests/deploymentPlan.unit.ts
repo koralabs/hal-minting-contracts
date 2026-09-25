@@ -75,13 +75,13 @@ describe("hal deployment plan", () => {
     const expected = buildExpectedContractStates(
       desiredState,
       vi.fn(() => ({
-        mintProxy: { mintProxyPolicyHash: { toHex: () => "aa" } },
-        mint: { mintValidatorHash: { toHex: () => "bb" } },
-        mintingData: { mintingDataValidatorHash: { toHex: () => "cc" } },
-        ordersSpend: { ordersSpendValidatorHash: { toHex: () => "dd" } },
-        refSpendProxy: { refSpendProxyValidatorHash: { toHex: () => "ee" } },
-        refSpend: { refSpendValidatorHash: { toHex: () => "ff" } },
-        royaltySpend: { royaltySpendValidatorHash: { toHex: () => "gg" } },
+        mintProxy: { mintProxyPolicyHash: "aa" },
+        mint: { mintValidatorHash: "bb" },
+        mintingData: { mintingDataValidatorHash: "cc" },
+        ordersSpend: { ordersSpendValidatorHash: "dd" },
+        refSpendProxy: { refSpendProxyValidatorHash: "ee" },
+        refSpend: { refSpendValidatorHash: "ff" },
+        royaltySpend: { royaltySpendValidatorHash: "gg" },
       })) as never
     );
 

@@ -1,5 +1,6 @@
-import { NetworkName } from "@helios-lang/tx-utils";
 import path from "path";
+
+import { NetworkName } from "../src/cardano/index.js";
 
 export const { STORE_DIRECTORY = "" } = process.env;
 

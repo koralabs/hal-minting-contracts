@@ -1,20 +1,18 @@
 import {
-  makeAddress,
-  makeMintingPolicyHash,
-  makeRegistrationDCert,
-  makeStakingAddress,
-  makeStakingValidatorHash,
-  makeValidatorHash,
-} from "@helios-lang/ledger";
-
+  Cardano,
+  scriptAddress,
+  scriptRewardAccount,
+  scriptStakeRegistration,
+} from "../cardano/index.js";
 import {
-  getMintingDataSpendUplcProgram,
-  getMintProxyMintUplcProgram,
-  getMintWithdrawUplcProgram,
-  getOrdersSpendUplcProgram,
-  getRefSpendProxyUplcProgram,
-  getRefSpendUplcProgram,
-  getRoyaltySpendUplcProgram,
+  getMintingDataSpendScript,
+  getMintProxyMintScript,
+  getMintWithdrawScript,
+  getOrdersSpendScript,
+  getRefSpendProxyScript,
+  getRefSpendScript,
+  getRoyaltySpendScript,
+  PlutusV2Script,
 } from "./validators.js";
 
 interface BuildContractsParams {
@@ -25,12 +23,48 @@ interface BuildContractsParams {
   royalty_spend_admin: string;
 }
 
+/** Every HAL contract: its applied script, hash (hex) and address (bech32). */
+interface BuiltContracts {
+  halPolicyHash: string;
+  mintProxy: { mintProxyMintScript: PlutusV2Script; mintProxyPolicyHash: string };
+  mint: {
+    mintWithdrawScript: PlutusV2Script;
+    mintValidatorHash: string;
+    mintStakingAddress: Cardano.RewardAccount;
+    mintRegistrationDCert: Cardano.Certificate;
+  };
+  mintingData: {
+    mintingDataSpendScript: PlutusV2Script;
+    mintingDataValidatorHash: string;
+    mintingDataValidatorAddress: string;
+  };
+  ordersSpend: {
+    ordersSpendScript: PlutusV2Script;
+    ordersSpendValidatorHash: string;
+    ordersSpendValidatorAddress: string;
+  };
+  refSpendProxy: {
+    refSpendProxyScript: PlutusV2Script;
+    refSpendProxyValidatorHash: string;
+    refSpendProxyValidatorAddress: string;
+  };
+  refSpend: {
+    refSpendScript: PlutusV2Script;
+    refSpendValidatorHash: string;
+    refSpendStakingAddress: Cardano.RewardAccount;
+    refSpendRegistrationDCert: Cardano.Certificate;
+  };
+  royaltySpend: {
+    royaltySpendScript: PlutusV2Script;
+    royaltySpendValidatorHash: string;
+    royaltySpendValidatorAddress: string;
+  };
+}
+
 /**
- * @description Build Contracts for De-Mi from config
- * @param {BuildContractsParams} params
- * @returns All Contracts
+ * @description Build the HAL contracts from config. Hashes are hex; addresses are bech32.
  */
-const buildContracts = (params: BuildContractsParams) => {
+const buildContracts = (params: BuildContractsParams): BuiltContracts => {
   const {
     isMainnet,
     mint_version,
@@ -40,120 +74,67 @@ const buildContracts = (params: BuildContractsParams) => {
   } = params;
 
   // "halmntprx.mint"
-  const mintProxyMintUplcProgram = getMintProxyMintUplcProgram(mint_version);
-  const mintProxyPolicyHash = makeMintingPolicyHash(
-    mintProxyMintUplcProgram.hash()
-  );
-  const halPolicyHash = mintProxyPolicyHash;
+  const mintProxyMintScript = getMintProxyMintScript(mint_version);
+  const halPolicyHash = mintProxyMintScript.hash;
 
   // "halmnt.withdraw"
-  const mintWithdrawUplcProgram = getMintWithdrawUplcProgram();
-  const mintValidatorHash = makeValidatorHash(mintWithdrawUplcProgram.hash());
-  const mintStakingAddress = makeStakingAddress(
-    isMainnet,
-    makeStakingValidatorHash(mintWithdrawUplcProgram.hash())
-  );
-  const mintRegistrationDCert = makeRegistrationDCert(
-    mintStakingAddress.stakingCredential
-  );
+  const mintWithdrawScript = getMintWithdrawScript();
 
   // "halmntmpt.spend"
-  const mintingDataSpendUplcProgram = getMintingDataSpendUplcProgram(
-    admin_verification_key_hash
-  );
-  const mintingDataValidatorHash = makeValidatorHash(
-    mintingDataSpendUplcProgram.hash()
-  );
-  const mintingDataValidatorAddress = makeAddress(
-    isMainnet,
-    mintingDataValidatorHash
-  );
+  const mintingDataSpendScript = getMintingDataSpendScript(admin_verification_key_hash);
 
   // "halord.spend"
-  const ordersSpendUplcProgram = getOrdersSpendUplcProgram(
-    halPolicyHash.toHex(),
-    orders_spend_randomizer
-  );
-  const ordersSpendValidatorHash = makeValidatorHash(
-    ordersSpendUplcProgram.hash()
-  );
-  const ordersSpendValidatorAddress = makeAddress(
-    isMainnet,
-    ordersSpendValidatorHash
-  );
+  const ordersSpendScript = getOrdersSpendScript(halPolicyHash, orders_spend_randomizer);
 
   // "halrefprx.spend"
-  const refSpendProxyUplcProgram = getRefSpendProxyUplcProgram();
-  const refSpendProxyValidatorHash = makeValidatorHash(
-    refSpendProxyUplcProgram.hash()
-  );
-  const refSpendProxyValidatorAddress = makeAddress(
-    isMainnet,
-    refSpendProxyValidatorHash
-  );
+  const refSpendProxyScript = getRefSpendProxyScript();
 
-  // "ref_spend.withdrawe"
-  const refSpendUplcProgram = getRefSpendUplcProgram();
-  const refSpendValidatorHash = makeValidatorHash(refSpendUplcProgram.hash());
-  const refSpendStakingAddress = makeStakingAddress(
-    isMainnet,
-    makeStakingValidatorHash(refSpendUplcProgram.hash())
-  );
-  const refSpendRegistrationDCert = makeRegistrationDCert(
-    refSpendStakingAddress.stakingCredential
-  );
+  // "halref.withdraw"
+  const refSpendScript = getRefSpendScript();
 
   // "halroy.spend"
-  const royaltySpendUplcProgram =
-    getRoyaltySpendUplcProgram(royalty_spend_admin);
-  const royaltySpendValidatorHash = makeValidatorHash(
-    royaltySpendUplcProgram.hash()
-  );
-  const royaltySpendValidatorAddress = makeAddress(
-    isMainnet,
-    royaltySpendValidatorHash
-  );
+  const royaltySpendScript = getRoyaltySpendScript(royalty_spend_admin);
 
   return {
     halPolicyHash,
     mintProxy: {
-      mintProxyMintUplcProgram,
-      mintProxyPolicyHash,
+      mintProxyMintScript,
+      mintProxyPolicyHash: halPolicyHash,
     },
     mint: {
-      mintWithdrawUplcProgram,
-      mintValidatorHash,
-      mintStakingAddress,
-      mintRegistrationDCert,
+      mintWithdrawScript,
+      mintValidatorHash: mintWithdrawScript.hash,
+      mintStakingAddress: scriptRewardAccount(mintWithdrawScript.hash, isMainnet),
+      mintRegistrationDCert: scriptStakeRegistration(mintWithdrawScript.hash),
     },
     mintingData: {
-      mintingDataSpendUplcProgram,
-      mintingDataValidatorHash,
-      mintingDataValidatorAddress,
+      mintingDataSpendScript,
+      mintingDataValidatorHash: mintingDataSpendScript.hash,
+      mintingDataValidatorAddress: scriptAddress(mintingDataSpendScript.hash, isMainnet),
     },
     ordersSpend: {
-      ordersSpendUplcProgram,
-      ordersSpendValidatorHash,
-      ordersSpendValidatorAddress,
+      ordersSpendScript,
+      ordersSpendValidatorHash: ordersSpendScript.hash,
+      ordersSpendValidatorAddress: scriptAddress(ordersSpendScript.hash, isMainnet),
     },
     refSpendProxy: {
-      refSpendProxyUplcProgram,
-      refSpendProxyValidatorHash,
-      refSpendProxyValidatorAddress,
+      refSpendProxyScript,
+      refSpendProxyValidatorHash: refSpendProxyScript.hash,
+      refSpendProxyValidatorAddress: scriptAddress(refSpendProxyScript.hash, isMainnet),
     },
     refSpend: {
-      refSpendUplcProgram,
-      refSpendValidatorHash,
-      refSpendStakingAddress,
-      refSpendRegistrationDCert,
+      refSpendScript,
+      refSpendValidatorHash: refSpendScript.hash,
+      refSpendStakingAddress: scriptRewardAccount(refSpendScript.hash, isMainnet),
+      refSpendRegistrationDCert: scriptStakeRegistration(refSpendScript.hash),
     },
     royaltySpend: {
-      royaltySpendUplcProgram,
-      royaltySpendValidatorHash,
-      royaltySpendValidatorAddress,
+      royaltySpendScript,
+      royaltySpendValidatorHash: royaltySpendScript.hash,
+      royaltySpendValidatorAddress: scriptAddress(royaltySpendScript.hash, isMainnet),
     },
   };
 };
 
-export type { BuildContractsParams };
+export type { BuildContractsParams, BuiltContracts };
 export { buildContracts };

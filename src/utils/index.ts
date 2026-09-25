@@ -1,72 +1,28 @@
-import { BlockFrostAPI } from "@blockfrost/blockfrost-js";
-import { NetworkParams } from "@helios-lang/ledger";
-import { NetworkName } from "@helios-lang/tx-utils";
-import { decodeUplcProgramV2FromCbor, UplcProgramV2 } from "@helios-lang/uplc";
-import { Result } from "ts-res";
+import type { BlockfrostTxClient } from "@koralabs/kora-labs-common/txBuild";
 
-import { mayFailAsync } from "../helpers/index.js";
+type RegistrationStatus = "registered" | "deregistered" | "none";
 
-const NETWORK_PARAMETER_URL = (network: NetworkName) =>
-  `https://network-status.helios-lang.io/${network}/config`;
-
-const fetchNetworkParameters = async (
-  network: NetworkName
-): Promise<Result<NetworkParams, string>> => {
-  return await mayFailAsync(
-    async () =>
-      (
-        await fetch(NETWORK_PARAMETER_URL(network))
-      ).json() as unknown as NetworkParams
-  ).complete();
-};
-
+/** Registration state of the two HAL staking (withdrawal-validator) addresses. */
 const checkAccountRegistrationStatus = async (
-  blockfrostApi: BlockFrostAPI,
+  blockfrost: Pick<BlockfrostTxClient, "getAccount">,
   mintStakingAddress: string,
   refSpendStakingAddress: string
 ): Promise<{
-  mintStakingAddress: "registered" | "deregistered" | "none";
-  refSpendStakingAddress: "registered" | "deregistered" | "none";
+  mintStakingAddress: RegistrationStatus;
+  refSpendStakingAddress: RegistrationStatus;
 }> => {
-  try {
-    const datas = await Promise.all([
-      blockfrostApi.accountsRegistrations(mintStakingAddress, {
-        order: "desc",
-      }),
-      blockfrostApi.accountsRegistrations(refSpendStakingAddress, {
-        order: "desc",
-      }),
-    ]);
-    const statuses = datas.map((data) => data[0].action);
-    return {
-      mintStakingAddress: statuses[0],
-      refSpendStakingAddress: statuses[1],
-    };
-  } catch {
-    return {
-      mintStakingAddress: "none",
-      refSpendStakingAddress: "none",
-    };
-  }
+  const status = async (stakeAddress: string): Promise<RegistrationStatus> => {
+    const account = await blockfrost.getAccount(stakeAddress);
+    if (!account) return "none";
+    return account.active ? "registered" : "deregistered";
+  };
+  return {
+    mintStakingAddress: await status(mintStakingAddress),
+    refSpendStakingAddress: await status(refSpendStakingAddress),
+  };
 };
 
-const createAlwaysFailUplcProgram = (): UplcProgramV2 => {
-  const header = "5839010000322253330033371e9101203";
-  const body = Array.from({ length: 63 }, () =>
-    Math.floor(Math.random() * 10)
-  ).join("");
-  const footer = "0048810014984d9595cd01";
-  const compiledCode = `${header}${body}${footer}`;
-  const program = decodeUplcProgramV2FromCbor(compiledCode);
-
-  return program;
-};
-
-export {
-  checkAccountRegistrationStatus,
-  createAlwaysFailUplcProgram,
-  fetchNetworkParameters,
-};
+export { checkAccountRegistrationStatus };
 
 export * from "./contract.js";
 export * from "./math.js";

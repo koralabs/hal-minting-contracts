@@ -1,30 +1,19 @@
+// The H.A.L. mint transaction: MPT proofs, the new minting data, reference/user outputs, redeemers
+// and script inputs. The same construction the HAL minting engine runs on chain.
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { ByteArrayLike, IntLike } from "@helios-lang/codec-utils";
-import {
-  Address,
-  makeAddress,
-  makeAssetClass,
-  makeAssets,
-  makeInlineTxOutputDatum,
-  makeMintingPolicyHash,
-  makePubKeyHash,
-  makeStakingAddress,
-  makeStakingValidatorHash,
-  makeTxOutput,
-  makeValidatorHash,
-  makeValue,
-  ShelleyAddress,
-  TxInput,
-  TxOutput,
-} from "@helios-lang/ledger";
-import { makeTxBuilder, TxBuilder } from "@helios-lang/tx-utils";
+import { AssetNameLabel } from "@koralabs/kora-labs-common";
 import { Err, Ok, Result } from "ts-res";
 
 import {
-  MPT_MINTED_VALUE,
-  PREFIX_100,
-  PREFIX_222,
-} from "../constants/index.js";
+  assetId,
+  Cardano,
+  inlineDatumOf,
+  PlutusData,
+  scriptAddress,
+  scriptRewardAccount,
+  Utxo,
+} from "../cardano/index.js";
+import { MPT_MINTED_VALUE } from "../constants/index.js";
 import {
   AssetNameProof,
   buildMintingData,
@@ -36,463 +25,265 @@ import {
   decodeSettingsV1Data,
   decodeWhitelistedValueFromCBOR,
   makeVoidData,
-  makeWhitelistedItemData,
   makeWhitelistedValueData,
-  MintingData,
   parseMPTProofJSON,
   Proofs,
-  WhitelistedItem,
   WhitelistedValue,
   WhitelistProof,
 } from "../contracts/index.js";
-import { convertError, mayFail } from "../helpers/index.js";
+import { convertError } from "../helpers/index.js";
 import { DeployedScripts } from "./deploy.js";
+import { HalTxPlan, referTo } from "./plan.js";
 import { AggregatedOrder, HalAssetInfo, HalUserOutputData } from "./types.js";
 import { getWhitelistedKey, updateWhitelistedValue } from "./whitelist.js";
-interface PrepareMintParams {
-  isMainnet: boolean;
-  address: Address;
-  aggregatedOrders: AggregatedOrder[];
-  assetsInfo: HalAssetInfo[];
-  db: Trie;
-  whitelistDB: Trie;
-  deployedScripts: DeployedScripts;
-  settingsAssetTxInput: TxInput;
-  mintingDataAssetTxInput: TxInput;
-  mintingTime: number;
-}
 
-/**
- * @description Prepare Mint Transaction
- * This function assumes all parameters are valid and do not need to validate again.
- * ## Before call this function:
- * - Filter out invalid Order UTxOs using `isOrderTxInputValid` function.
- * - Aggregate Order UTxOs using `aggregateOrderTxInputs` function.
- * ## NOTE:
- * - This function assumes that all Order UTxOs from aggregatedOrders are valid, otherwise it will return Error.
- * - Assets Info must be enough to mint all orders. (sum of `amount` from `aggregatedOrders`)
- * @param {PrepareMintParams} params
- * @returns {Promise<Result<TxBuilder,  Error>>} Transaction Result
- */
-const prepareMintTransaction = async (
-  params: PrepareMintParams
-): Promise<
-  Result<
-    {
-      txBuilder: TxBuilder;
-      db: Trie;
-      whitelistDB: Trie;
-      userOutputsData: HalUserOutputData[];
-      referenceOutputs: TxOutput[];
-      updatedWhitelistedValues: Array<{
-        destinationAddress: ShelleyAddress;
-        whitelistedValue: WhitelistedValue;
-      }>;
-    },
-    Error
-  >
-> => {
-  const {
-    isMainnet,
-    address,
-    aggregatedOrders,
-    assetsInfo: assetsInfoFromParam,
-    db,
-    whitelistDB,
-    deployedScripts,
-    settingsAssetTxInput,
-    mintingDataAssetTxInput,
-    mintingTime,
-  } = params;
+const EMPTY_ROOT = Buffer.alloc(32).toString("hex");
+const rootOf = (trie: Trie) => (trie.hash?.toString("hex") ?? EMPTY_ROOT).toLowerCase();
 
-  // sort aggregated orders by destination address
-  aggregatedOrders.sort((a, b) =>
+/** The validator walks orders in destination-address (whitelist key) order. */
+const sortOrdersForMint = (orders: AggregatedOrder[]): AggregatedOrder[] =>
+  [...orders].sort((a, b) =>
     getWhitelistedKey(a.destinationAddress)
       .toString("hex")
       .localeCompare(getWhitelistedKey(b.destinationAddress).toString("hex"))
   );
 
-  // destructure assetsInfo from param
-  const assetsInfo = [...assetsInfoFromParam];
+interface PrepareMintParams {
+  isMainnet: boolean;
+  aggregatedOrders: AggregatedOrder[];
+  assetsInfo: HalAssetInfo[];
+  db: Trie;
+  whitelistDB: Trie;
+  deployedScripts: DeployedScripts;
+  settingsAssetTxInput: Utxo;
+  mintingDataAssetTxInput: Utxo;
+  /** The tx's validity start (POSIX ms): whitelist time gaps are measured from it. */
+  mintingTime: number;
+}
 
-  if (address.era == "Byron")
-    return Err(new Error("Byron Address not supported"));
+interface PreparedMint {
+  /**
+   * The whole HAL mint: outputs are the minting data (index 0 — the next mint chains from it), the
+   * user outputs, then the reference outputs. Callers adding tokens may rebuild `outputs` from the
+   * parts below, keeping the minting data first. Complete it with `changeAddress` = the settings'
+   * payment_address: the orders' payment reaches it as change, which the validators require.
+   */
+  plan: HalTxPlan;
+  db: Trie;
+  whitelistDB: Trie;
+  mintingDataOutput: Cardano.TxOut;
+  userOutputsData: HalUserOutputData[];
+  referenceOutputs: Cardano.TxOut[];
+  updatedWhitelistedValues: Array<{ destinationAddress: string; whitelistedValue: WhitelistedValue }>;
+}
 
-  const {
-    mintProxyScriptTxInput,
-    mintingDataScriptTxInput,
-    mintScriptDetails,
-    mintScriptTxInput,
-    ordersSpendScriptTxInput,
-  } = deployedScripts;
+const userAssetValue = (policyId: string, hexNames: string[]): Cardano.Value => ({
+  coins: BigInt(1),
+  assets: new Map(
+    hexNames.map((hex) => [assetId(policyId, `${AssetNameLabel.LBL_222}${hex}`), BigInt(1)])
+  ),
+});
 
-  // decode settings
-  const settingsResult = mayFail(() =>
-    decodeSettingsDatum(settingsAssetTxInput.datum)
+/**
+ * @description Prepare the mint transaction.
+ * ## Before calling:
+ * - Validate and aggregate order UTxOs with `prepareOrders`.
+ * ## NOTE:
+ * - `assetsInfo` must hold exactly one H.A.L. per ordered unit.
+ * - Mutates `db` / `whitelistDB` to the post-mint state (roll back with `rollBackOrdersFromTries`).
+ */
+const prepareMintTransaction = async (
+  params: PrepareMintParams
+): Promise<Result<PreparedMint, Error>> => {
+  try {
+    return Ok(await prepareMint(params));
+  } catch (error) {
+    return Err(new Error(convertError(error)));
+  }
+};
+
+const prepareMint = async ({
+  isMainnet,
+  aggregatedOrders,
+  assetsInfo: assetsInfoParam,
+  db,
+  whitelistDB,
+  deployedScripts,
+  settingsAssetTxInput,
+  mintingDataAssetTxInput,
+  mintingTime,
+}: PrepareMintParams): Promise<PreparedMint> => {
+  const orders = sortOrdersForMint(aggregatedOrders);
+  const assetsInfo = [...assetsInfoParam];
+
+  const settingsV1 = decodeSettingsV1Data(
+    decodeSettingsDatum(inlineDatumOf(settingsAssetTxInput)).data,
+    isMainnet
   );
-  if (!settingsResult.ok) {
-    return Err(new Error(`Failed to decode settings: ${settingsResult.error}`));
-  }
-  const { data: settingsV1Data } = settingsResult.data;
-  const settingsV1Result = mayFail(() =>
-    decodeSettingsV1Data(settingsV1Data, isMainnet)
-  );
-  if (!settingsV1Result.ok) {
-    return Err(
-      new Error(`Failed to decode settings v1: ${settingsV1Result.error}`)
-    );
-  }
-  const {
-    policy_id,
-    allowed_minter,
-    ref_spend_proxy_script_hash,
-    minting_start_time,
-  } = settingsV1Result.data;
+  const mintingData = decodeMintingDataDatum(inlineDatumOf(mintingDataAssetTxInput));
+  if (mintingData.mpt_root_hash.toLowerCase() !== rootOf(db))
+    throw new Error("ERROR: Local DB and On Chain Root Hash mismatch");
+  if (mintingData.whitelist_mpt_root_hash.toLowerCase() !== rootOf(whitelistDB))
+    throw new Error("ERROR: Local Whitelist DB and On Chain Whitelist Root Hash mismatch");
 
-  // Get ref_spend_proxy script address where Ref Assets are collected.
-  const refSpendProxyScriptAddress = makeAddress(
-    isMainnet,
-    makeValidatorHash(ref_spend_proxy_script_hash)
-  );
-
-  // hal policy id
-  const halPolicyHash = makeMintingPolicyHash(policy_id);
-
-  // decode minting data
-  const mintingDataResult = mayFail(() =>
-    decodeMintingDataDatum(mintingDataAssetTxInput.datum)
-  );
-  if (!mintingDataResult.ok) {
-    return Err(
-      new Error(`Failed to decode minting data: ${mintingDataResult.error}`)
-    );
-  }
-  const mintingData = mintingDataResult.data;
-  const { mpt_root_hash, whitelist_mpt_root_hash } = mintingData;
-
-  // check if current db trie hash is same as minting data root hash
-  if (
-    mpt_root_hash.toLowerCase() !=
-    (db.hash?.toString("hex") || Buffer.alloc(32).toString("hex")).toLowerCase()
-  ) {
-    return Err(new Error("ERROR: Local DB and On Chain Root Hash mismatch"));
-  }
-
-  // check if current whitelist db trie hash is same as minting data root hash
-  if (
-    whitelist_mpt_root_hash.toLowerCase() !=
-    (
-      whitelistDB.hash?.toString("hex") || Buffer.alloc(32).toString("hex")
-    ).toLowerCase()
-  ) {
-    return Err(
-      new Error(
-        "ERROR: Local Whitelist DB and On Chain Whitelist Root Hash mismatch"
-      )
-    );
-  }
-
-  // make Proofs List for Minting Data V1 Redeemer
-  // prepare H.A.L. NFTs value to mint
-  const proofsList: Proofs[] = [];
-  const userOutputsData: HalUserOutputData[] = [];
-  const halTokensValue: [ByteArrayLike, IntLike][] = [];
-  const referenceOutputs: TxOutput[] = [];
-  const updatedWhitelistedValues: Array<{
-    destinationAddress: ShelleyAddress;
-    whitelistedValue: WhitelistedValue;
-  }> = [];
-
+  const { policy_id, allowed_minter, ref_spend_proxy_script_hash, minting_start_time } = settingsV1;
+  const refSpendProxyAddress = scriptAddress(ref_spend_proxy_script_hash, isMainnet) as Cardano.PaymentAddress;
   const transactionTimeGap = minting_start_time - mintingTime;
 
-  for (const aggregatedOrder of aggregatedOrders) {
+  const proofsList: Proofs[] = [];
+  const userOutputsData: HalUserOutputData[] = [];
+  const referenceOutputs: Cardano.TxOut[] = [];
+  const halAssets = new Map<string, bigint>();
+  const updatedWhitelistedValues: PreparedMint["updatedWhitelistedValues"] = [];
+
+  for (const { destinationAddress, amount, needWhitelistProof } of orders) {
     const assetNameProofs: AssetNameProof[] = [];
     const assetUtf8Names: string[] = [];
-    let whitelistProof: WhitelistProof | undefined;
-    const { destinationAddress, amount, needWhitelistProof } = aggregatedOrder;
-    const userValue = makeValue(1n);
+    const hexNames: string[] = [];
 
     for (let i = 0; i < amount; i++) {
       const assetInfo = assetsInfo.shift();
-      if (!assetInfo) {
-        return Err(new Error("Assets Info doesn't match with Orders' amount"));
-      }
+      if (!assetInfo) throw new Error("Assets Info doesn't match with Orders' amount");
       const { assetUtf8Name, assetDatum } = assetInfo;
-      const assetHexName = Buffer.from(assetUtf8Name, "utf8").toString("hex");
+      const hex = Buffer.from(assetUtf8Name, "utf8").toString("hex");
+      if (typeof (await db.get(assetUtf8Name)) === "undefined")
+        throw new Error(`Asset name is not pre-defined: ${assetUtf8Name}`);
+      const proof = await db.prove(assetUtf8Name);
+      await db.delete(assetUtf8Name);
+      await db.insert(assetUtf8Name, MPT_MINTED_VALUE);
+      assetNameProofs.push([hex, parseMPTProofJSON(proof.toJSON())]);
       assetUtf8Names.push(assetUtf8Name);
+      hexNames.push(hex);
 
-      try {
-        const hasKey = typeof (await db.get(assetUtf8Name)) !== "undefined";
-        if (!hasKey) {
-          throw new Error(`Asset name is not pre-defined: ${assetUtf8Name}`);
-        }
-
-        const mptProof = await db.prove(assetUtf8Name);
-        await db.delete(assetUtf8Name);
-        await db.insert(assetUtf8Name, MPT_MINTED_VALUE);
-        assetNameProofs.push([
-          assetHexName,
-          parseMPTProofJSON(mptProof.toJSON()),
-        ]);
-      } catch (error) {
-        return Err(
-          new Error(`Failed to make asset name proof: ${convertError(error)}`)
-        );
-      }
-
-      const refAssetClass = makeAssetClass(
-        halPolicyHash,
-        `${PREFIX_100}${assetHexName}`
-      );
-      const userAssetClass = makeAssetClass(
-        halPolicyHash,
-        `${PREFIX_222}${assetHexName}`
-      );
-
-      // add user asset into one value.
-      userValue.assets = userValue.assets.add(
-        makeAssets([[userAssetClass, 1n]])
-      );
-
-      // make reference output value
-      const refValue = makeValue(1n, makeAssets([[refAssetClass, 1n]]));
-
-      // push reference output
-      referenceOutputs.push(
-        makeTxOutput(refSpendProxyScriptAddress, refValue, assetDatum)
-      );
-
-      // add hal token value to mint
-      halTokensValue.push(
-        [refAssetClass.tokenName, 1n],
-        [userAssetClass.tokenName, 1n]
-      );
+      const refUnit = `${AssetNameLabel.LBL_100}${hex}`;
+      referenceOutputs.push({
+        address: refSpendProxyAddress,
+        value: { coins: BigInt(1), assets: new Map([[assetId(policy_id, refUnit), BigInt(1)]]) },
+        datum: assetDatum.toCore(),
+      });
+      halAssets.set(refUnit, BigInt(1));
+      halAssets.set(`${AssetNameLabel.LBL_222}${hex}`, BigInt(1));
     }
 
+    let whitelistProof: WhitelistProof | undefined;
     if (needWhitelistProof) {
-      // have to be whitelisted
-      const destinationAddressKey = Buffer.from(
-        destinationAddress.toUplcData().toCbor()
-      );
-      try {
-        const whitelistedValueCbor = await whitelistDB.get(
-          destinationAddressKey
-        );
-        if (!whitelistedValueCbor) {
-          return Err(
-            new Error(
-              `Address ${destinationAddress.toBech32()} is not whitelisted. Wait until ${new Date(
-                minting_start_time
-              ).toLocaleString()}`
-            )
-          );
-        }
-
-        const whitelistedValueResult =
-          decodeWhitelistedValueFromCBOR(whitelistedValueCbor);
-        if (!whitelistedValueResult.ok) {
-          return Err(
-            new Error(
-              `Address ${destinationAddress.toBech32()} has invalid whitelisted item data in Trie: ${
-                whitelistedValueResult.error
-              }`
-            )
-          );
-        }
-        const whitelistedValue = whitelistedValueResult.data;
-        const { newWhitelistedValue } = updateWhitelistedValue(
-          whitelistedValue,
-          amount,
-          transactionTimeGap
-        );
-
-        // then make proof
-        const proof = await whitelistDB.prove(destinationAddressKey);
-        whitelistProof = [whitelistedValue, parseMPTProofJSON(proof.toJSON())];
-        const updatedWhitelistedValueCbor = Buffer.from(
-          makeWhitelistedValueData(newWhitelistedValue).toCbor()
-        );
-
-        // update whitelist DB
-        await whitelistDB.delete(destinationAddressKey);
-        await whitelistDB.insert(
-          destinationAddressKey,
-          updatedWhitelistedValueCbor
-        );
-
-        updatedWhitelistedValues.push({
-          destinationAddress,
-          whitelistedValue: newWhitelistedValue,
-        });
-      } catch (error) {
-        return Err(
-          new Error(
-            `Failed to make whitelist proof for ${destinationAddress.toBech32()}: ${convertError(
-              error
-            )}`
-          )
+      const key = getWhitelistedKey(destinationAddress);
+      const current = await whitelistDB.get(key);
+      if (!current) {
+        throw new Error(
+          `Address ${destinationAddress} is not whitelisted. Wait until ${new Date(minting_start_time).toLocaleString()}`
         );
       }
+      const decoded = decodeWhitelistedValueFromCBOR(current);
+      if (!decoded.ok) throw decoded.error;
+      const { newWhitelistedValue } = updateWhitelistedValue(decoded.data, amount, transactionTimeGap);
+      const proof = await whitelistDB.prove(key);
+      whitelistProof = [decoded.data, parseMPTProofJSON(proof.toJSON())];
+      await whitelistDB.delete(key);
+      await whitelistDB.insert(key, Buffer.from(makeWhitelistedValueData(newWhitelistedValue).toCbor(), "hex"));
+      updatedWhitelistedValues.push({ destinationAddress, whitelistedValue: newWhitelistedValue });
     }
 
     proofsList.push([assetNameProofs, whitelistProof]);
     userOutputsData.push({
       assetUtf8Names,
       destinationAddress,
-      userOutput: makeTxOutput(destinationAddress, userValue),
+      userOutput: {
+        address: destinationAddress as Cardano.PaymentAddress,
+        value: userAssetValue(policy_id, hexNames),
+      },
     });
   }
 
-  // update minting data
-  const newMintingData: MintingData = {
-    ...mintingData,
-    mpt_root_hash: (
-      db.hash?.toString("hex") || Buffer.alloc(32).toString("hex")
-    ).toLowerCase(),
-    whitelist_mpt_root_hash: (
-      whitelistDB.hash?.toString("hex") || Buffer.alloc(32).toString("hex")
-    ).toLowerCase(),
+  const [, mintingDataOut] = mintingDataAssetTxInput;
+  const mintingDataOutput: Cardano.TxOut = {
+    address: mintingDataOut.address,
+    value: mintingDataOut.value,
+    datum: buildMintingData({
+      ...mintingData,
+      mpt_root_hash: rootOf(db),
+      whitelist_mpt_root_hash: rootOf(whitelistDB),
+    }).toCore(),
   };
 
-  // minting data asset value
-  const mintingDataValue = makeValue(
-    mintingDataAssetTxInput.value.lovelace,
-    mintingDataAssetTxInput.value.assets
-  );
-
-  // build redeemer for mint v1 `MintNFTs`
-  const mintMintNFTsRedeemer = buildMintMintNFTsRedeemer();
-
-  // build redeemer for minting data `Mint(proofsList)`
-  const mintingDataMintRedeemer = buildMintingDataMintRedeemer(proofsList);
-
-  // build redeemer for orders spend `ExecuteOrders`
-  const ordersSpendExecuteOrdersRedeemer =
-    buildOrdersSpendExecuteOrdersRedeemer();
-
-  const totalOrderTxInputs = aggregatedOrders
-    .map((aggregatedOrder) => aggregatedOrder.orderTxInputs)
-    .flat();
-
-  // start building tx
-  const txBuilder = makeTxBuilder({
-    isMainnet,
-  });
-
-  // <-- add required signer
-  txBuilder.addSigners(makePubKeyHash(allowed_minter));
-
-  // <-- attach settings asset as reference input
-  txBuilder.refer(settingsAssetTxInput);
-
-  // <-- attach deployed scripts
-  txBuilder.refer(
+  const {
     mintProxyScriptTxInput,
     mintScriptTxInput,
+    mintScriptDetails,
     mintingDataScriptTxInput,
-    ordersSpendScriptTxInput
-  );
+    ordersSpendScriptTxInput,
+  } = deployedScripts;
+  const executeOrders: PlutusData = buildOrdersSpendExecuteOrdersRedeemer();
+  const plan: HalTxPlan = {
+    inputs: [
+      { utxo: mintingDataAssetTxInput, redeemer: buildMintingDataMintRedeemer(proofsList) },
+      ...orders.flatMap(({ orderTxInputs }) => orderTxInputs.map((utxo) => ({ utxo, redeemer: executeOrders }))),
+    ],
+    outputs: [mintingDataOutput, ...userOutputsData.map((u) => u.userOutput), ...referenceOutputs],
+    mint: [{ policyId: policy_id, assets: halAssets, redeemer: makeVoidData() }],
+    withdrawals: [
+      {
+        rewardAccount: scriptRewardAccount(mintScriptDetails.validatorHash, isMainnet),
+        quantity: BigInt(0),
+        redeemer: buildMintMintNFTsRedeemer(),
+      },
+    ],
+    requiredSigners: [allowed_minter],
+    validFromTime: mintingTime,
+    ...referTo([
+      settingsAssetTxInput,
+      mintProxyScriptTxInput,
+      mintScriptTxInput,
+      mintingDataScriptTxInput,
+      ordersSpendScriptTxInput,
+    ]),
+  };
 
-  // <-- withdraw from mint withdrawal validator (script from reference input)
-  txBuilder.withdrawUnsafe(
-    makeStakingAddress(
-      isMainnet,
-      makeStakingValidatorHash(mintScriptDetails.validatorHash)
-    ),
-    0n,
-    mintMintNFTsRedeemer
-  );
-
-  // <-- start from minting time
-  txBuilder.validFromTime(mintingTime);
-
-  // <-- spend minting data utxo
-  txBuilder.spendUnsafe(mintingDataAssetTxInput, mintingDataMintRedeemer);
-
-  // <-- lock minting data value with new root hash - mintint_data_output
-  txBuilder.payUnsafe(
-    mintingDataAssetTxInput.address,
-    mintingDataValue,
-    makeInlineTxOutputDatum(buildMintingData(newMintingData))
-  );
-
-  // <-- mint hal nfts
-  txBuilder.mintPolicyTokensUnsafe(
-    halPolicyHash,
-    halTokensValue,
-    makeVoidData()
-  );
-
-  // <-- spend order utxos
-  for (const orderTxInput of totalOrderTxInputs) {
-    txBuilder.spendUnsafe(orderTxInput, ordersSpendExecuteOrdersRedeemer);
-  }
-
-  return Ok({
-    txBuilder,
+  return {
+    plan,
     db,
     whitelistDB,
+    mintingDataOutput,
     userOutputsData,
     referenceOutputs,
     updatedWhitelistedValues,
-  });
+  };
 };
 
-/**
- * @interface
- * @typedef {object} RollBackOrdersFromTriesParams
- * @property {string[]} utf8Names H.A.L. Assets' UTF-8 Names
- * @property {Array<{address: ShelleyAddress; whitelistedItem: WhitelistedItem;}>} whitelistedItemsData Original Whitelisted Items Data that may be changed
- * @property {Trie} db Trie DB
- */
 interface RollBackOrdersFromTriesParams {
   utf8Names: string[];
-  whitelistedItemsData: Array<{
-    address: ShelleyAddress;
-    whitelistedItem: WhitelistedItem;
-  }>;
+  /** The original whitelisted values of the addresses the failed mint touched. */
+  whitelistedValuesData: Array<{ address: string; whitelistedValue: WhitelistedValue }>;
   db: Trie;
   whitelistDB: Trie;
 }
 
 /**
- * @description Roll Back Orders from Trie after minting is failed
- * @param {RollBackOrdersFromTriesParams} params
- * @returns {Promise<Result<void,  Error>>} Result or Error
+ * @description Roll back the tries after a mint failed
  */
 const rollBackOrdersFromTries = async (
   params: RollBackOrdersFromTriesParams
 ): Promise<Result<void, Error>> => {
-  const { utf8Names, whitelistedItemsData, db, whitelistDB } = params;
+  const { utf8Names, whitelistedValuesData, db, whitelistDB } = params;
 
   for (const utf8Name of utf8Names) {
     try {
       const value = await db.get(utf8Name);
-      const needRollback =
-        typeof value !== "undefined" &&
-        Buffer.from(value).toString() === MPT_MINTED_VALUE;
-      if (needRollback) {
+      if (typeof value !== "undefined" && Buffer.from(value).toString() === MPT_MINTED_VALUE) {
         await db.delete(utf8Name);
         await db.insert(utf8Name, "");
       }
     } catch (error) {
-      return Err(
-        new Error(`Failed to roll back "${utf8Name}" : ${convertError(error)}`)
-      );
+      return Err(new Error(`Failed to roll back "${utf8Name}" : ${convertError(error)}`));
     }
   }
 
-  for (const whitelistedItemData of whitelistedItemsData) {
-    const { address, whitelistedItem } = whitelistedItemData;
-    const key = Buffer.from(address.toUplcData().toCbor());
-    const value = Buffer.from(
-      makeWhitelistedItemData(whitelistedItem).toCbor()
-    );
+  // v1 wrote a single WhitelistedItem here — not the list the trie holds — corrupting the root.
+  for (const { address, whitelistedValue } of whitelistedValuesData) {
+    const key = getWhitelistedKey(address);
+    const value = Buffer.from(makeWhitelistedValueData(whitelistedValue).toCbor(), "hex");
     const currentValue = await whitelistDB.get(key);
-    if (
-      currentValue &&
-      currentValue.toString("hex") !== value.toString("hex")
-    ) {
+    if (currentValue && currentValue.toString("hex") !== value.toString("hex")) {
       await whitelistDB.delete(key);
       await whitelistDB.insert(key, value);
     }
@@ -501,5 +292,5 @@ const rollBackOrdersFromTries = async (
   return Ok();
 };
 
-export type { PrepareMintParams, RollBackOrdersFromTriesParams };
-export { prepareMintTransaction, rollBackOrdersFromTries };
+export type { PrepareMintParams, PreparedMint, RollBackOrdersFromTriesParams };
+export { prepareMintTransaction, rollBackOrdersFromTries, sortOrdersForMint };

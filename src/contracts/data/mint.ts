@@ -1,16 +1,10 @@
-import { makeConstrData, UplcData } from "@helios-lang/uplc";
+import { constr, PlutusData } from "../../cardano/index.js";
 
-const buildMintMintNFTsRedeemer = (): UplcData => {
-  return makeConstrData(0, []);
-};
+const buildMintMintNFTsRedeemer = (): PlutusData => constr(0);
 
-const buildMintBurnNFTsRedeemer = (): UplcData => {
-  return makeConstrData(1, []);
-};
+const buildMintBurnNFTsRedeemer = (): PlutusData => constr(1);
 
-const buildMintMintRoyaltyNFTRedeemer = (): UplcData => {
-  return makeConstrData(2, []);
-};
+const buildMintMintRoyaltyNFTRedeemer = (): PlutusData => constr(2);
 
 export {
   buildMintBurnNFTsRedeemer,

@@ -1,75 +1,44 @@
-import { TxOutputDatum } from "@helios-lang/ledger";
 import {
-  expectByteArrayData,
-  expectConstrData,
-  expectIntData,
-  makeByteArrayData,
-  makeConstrData,
-  makeIntData,
-  UplcData,
-} from "@helios-lang/uplc";
-
+  bytes,
+  constr,
+  expectBytes,
+  expectConstr,
+  expectInt,
+  int,
+  PlutusData,
+} from "../../cardano/index.js";
 import { invariant } from "../../helpers/index.js";
 import { RefSpendSettings, Settings } from "../types/index.js";
 
-const buildSettingsData = (settings: Settings): UplcData => {
+const buildSettingsData = (settings: Settings): PlutusData => {
   const { mint_governor, mint_version, data } = settings;
-  return makeConstrData(0, [
-    makeByteArrayData(mint_governor),
-    makeIntData(mint_version),
-    data,
-  ]);
+  return constr(0, [bytes(mint_governor), int(mint_version), data]);
 };
 
-const decodeSettingsDatum = (datum: TxOutputDatum | undefined): Settings => {
-  invariant(
-    datum?.kind == "InlineTxOutputDatum",
-    "Settings must be inline datum"
-  );
-  const datumData = datum.data;
-  const settingsConstrData = expectConstrData(datumData, 0, 3);
-
-  const mint_governor = expectByteArrayData(
-    settingsConstrData.fields[0],
-    "mint_governor must be ByteArray"
-  ).toHex();
-
-  const mint_version = expectIntData(settingsConstrData.fields[1]).value;
-
-  const data = settingsConstrData.fields[2];
-
+/** `datum` is the settings handle's inline datum. */
+const decodeSettingsDatum = (datum: PlutusData | undefined): Settings => {
+  invariant(datum, "Settings must be inline datum");
+  const { fields } = expectConstr(datum, "Settings", 0, 3);
   return {
-    mint_governor,
-    mint_version,
-    data,
+    mint_governor: expectBytes(fields[0], "mint_governor"),
+    mint_version: expectInt(fields[1], "mint_version"),
+    data: fields[2],
   };
 };
 
-const buildRefSpendSettingsData = (settings: RefSpendSettings): UplcData => {
+const buildRefSpendSettingsData = (settings: RefSpendSettings): PlutusData => {
   const { ref_spend_governor, data } = settings;
-  return makeConstrData(0, [makeByteArrayData(ref_spend_governor), data]);
+  return constr(0, [bytes(ref_spend_governor), data]);
 };
 
 const decodeRefSpendSettingsDatum = (
-  datum: TxOutputDatum | undefined
+  datum: PlutusData | undefined
 ): RefSpendSettings => {
-  invariant(
-    datum?.kind == "InlineTxOutputDatum",
-    "RefSpendSettings must be inline datum"
-  );
-  const datumData = datum.data;
-  const refSpendSettingsConstrData = expectConstrData(datumData, 0, 2);
-
-  const ref_spend_governor = expectByteArrayData(
-    refSpendSettingsConstrData.fields[0],
-    "ref_spend_governor must be ByteArray"
-  ).toHex();
-
-  const data = refSpendSettingsConstrData.fields[1];
-
+  invariant(datum, "RefSpendSettings must be inline datum");
+  const { fields } = expectConstr(datum, "RefSpendSettings", 0, 2);
   return {
-    ref_spend_governor,
-    data,
+    ref_spend_governor: expectBytes(fields[0], "ref_spend_governor"),
+    data: fields[1],
   };
 };
 

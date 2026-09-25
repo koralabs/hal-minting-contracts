@@ -1,7 +1,5 @@
-import { makeConstrData, makeIntData, UplcData } from "@helios-lang/uplc";
+import { constr, int, PlutusData } from "../../cardano/index.js";
 
-const buildRoyaltyFlagCIP68ExtraData = (): UplcData => {
-  return makeConstrData(0, [makeIntData(1)]);
-};
+const buildRoyaltyFlagCIP68ExtraData = (): PlutusData => constr(0, [int(1)]);
 
 export { buildRoyaltyFlagCIP68ExtraData };

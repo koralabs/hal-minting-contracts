@@ -22,7 +22,11 @@ The repo is intentionally split this way so that contract validation rules remai
 - Defines TypeScript types for settings, minting-data, orders, whitelist entries, MPT proofs, and royalty data.
 - Encodes and decodes datum and redeemer payloads so off-chain code can interact with validators safely.
 
+### `src/cardano/*`
+- The single `@cardano-sdk/core` entry point (Conway set tagging on, shared CJS instance), Plutus data helpers (including the Plutus `Address` type the whitelist keys use), UTxO/address helpers and slot arithmetic.
+
 ### `src/txs/*`
+- Every builder returns a `HalTxPlan`: the contract side of a tx (script inputs with redeemers, reference inputs, mint, withdrawals, certificates, required signers, outputs, validity start). `completeTx` adds the paying wallet (inputs only for what the plan cannot pay itself, collateral when scripts run) and finalizes through kora-labs-common's `finalizeScriptTx` with the given evaluator (the node via `BlockfrostTxClient.evaluateTx`, or `localEvaluator` offline). A mint is completed with `changeAddress` = the settings' `payment_address`: the orders' payment reaches it as change.
 - Implements the major transaction-building surfaces:
   - order request,
   - order cancel,
@@ -49,7 +53,10 @@ The repo is intentionally split this way so that contract validation rules remai
 - Includes `generateDeploymentPlan.ts`, the repo-local planner entrypoint used by CI.
 
 ### `tests/`
-- Combines emulator-backed integration tests with unit tests for deployment planning, desired-state parsing, runtime helpers, and trie-proof utilities.
+- `validators.unit.ts` runs the validators on a full ledger (scalus's Cardano emulator: balance, fees, signatures, validity interval, every script) over txs built by this package — mints (public, whitelisted, multi-user), cancel, refund (incl. a non-OrderDatum order), reference-datum update, royalty mint/update, staking registration — each with a negative control the validator must refuse.
+- `previewMint.unit.ts` rebuilds the H.A.L. part of the live preview mint `31d9bc7d…` from its pre-state byte-for-byte (redeemers, minting-data output, reference outputs) and has the validators accept it.
+- `heliosParity.unit.ts` compares every datum/redeemer codec, whitelist key and parameter-applied script (all seven contracts × three networks) with what the Helios v1 package produced (`fixtures/heliosV1.json`, generator in `fixtures/generateHeliosV1.ts`).
+- `builders.unit.ts` covers order validation/aggregation, builder guards, slot arithmetic, wallet completion and Handle API rate limits; the deployment tests cover desired-state parsing and drift planning.
 
 ## Contract Set
 The current contract suite consists of seven deployable script surfaces:
@@ -172,11 +179,13 @@ The deployment planner uses `deploy/*.yaml` as the canonical desired state. The 
 If those sources diverge, the divergence is itself operationally important and should be documented or corrected rather than ignored.
 
 ## External Dependencies
-- `@helios-lang/*` packages for ledger, UPLC, and tx-building primitives.
+- `@cardano-sdk/core` for ledger types, Plutus data and serialization. It is loaded through the CommonJS shim `src/cardano/core.cts` so this ESM package shares one cardano-sdk instance with `@koralabs/kora-labs-common`.
+- `@koralabs/kora-labs-common/txBuild` for tx finalization (node-evaluated ex-units, exact fee, script_data_hash), Blockfrost access, and — through `scalus` — validator parameter application and offline script evaluation.
+- No Helios package (removed in 2.0.0).
 - `@aiken-lang/merkle-patricia-forestry` for inventory and whitelist tries.
 - Blockfrost for live UTxO access.
 - `api.handle.me` and its preview/preprod variants for script and handle-backed datum discovery.
-- `@koralabs/kora-labs-common` for shared script-detail types.
+- `@koralabs/kora-labs-common` for shared script-detail types and the rate-limit rules `fetchApi` follows (a 429's stated wait is honored process-wide; nothing is retried early).
 
 ## Verification Surfaces
 
@@ -185,7 +194,7 @@ If those sources diverge, the divergence is itself operationally important and s
 - `.github/workflows/deployment-plan.yml` runs the repo-local deployment planner through the shared deployment workflow.
 
 ### Test types
-- Emulator integration tests validate minting, whitelist usage, royalty flows, and ref-datum updates.
+- Ledger-emulator tests (scalus) validate minting, whitelist usage, cancel/refund, royalty flows and ref-datum updates, each with a refusal case; a live preview mint is rebuilt byte-for-byte; Helios-v1 parity fixtures pin every codec and applied script.
 - Unit tests validate deployment-state parsing, live-state fetch behavior, drift summarization, handle allocation, and utility logic.
 
 Together these tests make the repo more than a contract dump. They prove that the off-chain assembly and deployment abstractions still match the contract model the repo claims to own.

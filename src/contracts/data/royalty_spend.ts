@@ -1,11 +1,7 @@
-import { makeConstrData, UplcData } from "@helios-lang/uplc";
+import { constr, PlutusData } from "../../cardano/index.js";
 
-const buildRoyaltySpendUpdateRedeemer = (): UplcData => {
-  return makeConstrData(0, []);
-};
+const buildRoyaltySpendUpdateRedeemer = (): PlutusData => constr(0);
 
-const buildRoyaltySpendMigrateRedeemer = (): UplcData => {
-  return makeConstrData(1, []);
-};
+const buildRoyaltySpendMigrateRedeemer = (): PlutusData => constr(1);
 
 export { buildRoyaltySpendMigrateRedeemer, buildRoyaltySpendUpdateRedeemer };

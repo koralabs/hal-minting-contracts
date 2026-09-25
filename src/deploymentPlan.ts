@@ -4,18 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import {
-  makeAddress,
-  makeAssetClass,
-  makeAssets,
-  makeInlineTxOutputDatum,
-  makeTxInput,
-  makeTxOutput,
-  makeValue,
-} from "@helios-lang/ledger";
-import { decodeUplcData } from "@helios-lang/uplc";
-
-import { LEGACY_POLICY_ID } from "./constants/index.js";
+import { fromCbor } from "./cardano/index.js";
 import { buildContracts } from "./contracts/config.js";
 import {
   decodeMintingDataDatum,
@@ -120,19 +109,19 @@ const expectedScriptHashForContract = (
 ): string => {
   switch (contract.build.contractName) {
     case "halmntprx.mint":
-      return built.mintProxy.mintProxyPolicyHash.toHex();
+      return built.mintProxy.mintProxyPolicyHash;
     case "halmnt.withdraw":
-      return built.mint.mintValidatorHash.toHex();
+      return built.mint.mintValidatorHash;
     case "halmntmpt.spend":
-      return built.mintingData.mintingDataValidatorHash.toHex();
+      return built.mintingData.mintingDataValidatorHash;
     case "halord.spend":
-      return built.ordersSpend.ordersSpendValidatorHash.toHex();
+      return built.ordersSpend.ordersSpendValidatorHash;
     case "halrefprx.spend":
-      return built.refSpendProxy.refSpendProxyValidatorHash.toHex();
+      return built.refSpendProxy.refSpendProxyValidatorHash;
     case "halref.withdraw":
-      return built.refSpend.refSpendValidatorHash.toHex();
+      return built.refSpend.refSpendValidatorHash;
     case "halroy.spend":
-      return built.royaltySpend.royaltySpendValidatorHash.toHex();
+      return built.royaltySpend.royaltySpendValidatorHash;
     default:
       throw new Error(`unsupported contract_name \`${contract.build.contractName}\``);
   }
@@ -211,22 +200,14 @@ const fetchHalSettings = async ({
   if (!handle) return null;
   const datumHex = await fetchHandleDatum({ network, handleName: SETTINGS_HANDLE, userAgent, fetchFn });
   if (!datumHex) return null;
-  const txInput = makeTxInput(
-    String(handle.utxo),
-    makeTxOutput(
-      makeAddress(String(handle.resolved_addresses?.ada)),
-      makeValue(1n, makeAssets([[makeAssetClass(`${LEGACY_POLICY_ID}.${String(handle.hex)}`), 1n]])),
-      makeInlineTxOutputDatum(decodeUplcData(datumHex))
-    )
-  );
-  const settings = decodeSettingsDatum(txInput.datum);
+  const settings = decodeSettingsDatum(fromCbor(datumHex));
   const settingsV1 = decodeSettingsV1Data(settings.data, isMainnet);
   return {
     values: {
       allowed_minter: settingsV1.allowed_minter,
       hal_nft_price: Number(settingsV1.hal_nft_price),
       minting_start_time: settingsV1.minting_start_time,
-      payment_address: settingsV1.payment_address.toString(),
+      payment_address: settingsV1.payment_address,
       policy_id: settingsV1.policy_id,
       minting_data_script_hash: settingsV1.minting_data_script_hash,
       orders_spend_script_hash: settingsV1.orders_spend_script_hash,
@@ -253,15 +234,7 @@ const fetchRefSpendSettings = async ({
   if (!handle || !handle.resolved_addresses?.ada) return null;
   const datumHex = await fetchHandleDatum({ network, handleName: REF_SPEND_SETTINGS_HANDLE, userAgent, fetchFn });
   if (!datumHex) return null;
-  const txInput = makeTxInput(
-    String(handle.utxo),
-    makeTxOutput(
-      makeAddress(String(handle.resolved_addresses.ada)),
-      makeValue(1n, makeAssets([[makeAssetClass(`${LEGACY_POLICY_ID}.${String(handle.hex)}`), 1n]])),
-      makeInlineTxOutputDatum(decodeUplcData(datumHex))
-    )
-  );
-  const settings = decodeRefSpendSettingsDatum(txInput.datum);
+  const settings = decodeRefSpendSettingsDatum(fromCbor(datumHex));
   const settingsV1 = decodeRefSpendSettingsV1Data(settings.data);
   return {
     values: {
@@ -286,15 +259,7 @@ const fetchMintingData = async ({
   const utxo = await fetchHandleUtxo({ network, handleName: MINTING_DATA_HANDLE, userAgent, fetchFn });
   const datumHex = await fetchHandleDatum({ network, handleName: MINTING_DATA_HANDLE, userAgent, fetchFn });
   if (!utxo || !datumHex) return null;
-  const txInput = makeTxInput(
-    String(handle.utxo),
-    makeTxOutput(
-      makeAddress(String(handle.resolved_addresses.ada)),
-      makeValue(BigInt(Number(utxo.lovelace ?? 0)), makeAssets([[makeAssetClass(`${LEGACY_POLICY_ID}.${String(handle.hex)}`), 1n]])),
-      makeInlineTxOutputDatum(decodeUplcData(datumHex))
-    )
-  );
-  const mintingData = decodeMintingDataDatum(txInput.datum);
+  const mintingData = decodeMintingDataDatum(fromCbor(datumHex));
   return {
     values: {
       mpt_root_hash: mintingData.mpt_root_hash,

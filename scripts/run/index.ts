@@ -1,6 +1,6 @@
-import { NetworkName } from "@helios-lang/tx-utils";
 import prompts from "prompts";
 
+import { networkNameOf } from "../../src/cardano/index.js";
 import { NETWORK } from "../../src/constants/index.js";
 import { MPT_STORE_PATH } from "../constants.js";
 import { doMPTActions } from "./mpt.js";
@@ -8,7 +8,7 @@ import { doOnChainActions } from "./on-chain.js";
 import { CommandImpl } from "./types.js";
 
 const main = async () => {
-  const storePath = MPT_STORE_PATH(NETWORK as NetworkName);
+  const storePath = MPT_STORE_PATH(networkNameOf(NETWORK));
   const commandImpl = new CommandImpl(storePath);
   await commandImpl.loadMPT();
 

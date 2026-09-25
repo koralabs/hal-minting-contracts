@@ -1,5 +1,3 @@
-import { Address } from "@helios-lang/ledger";
-
 interface SettingsV1 {
   policy_id: string;
   // who can mint HAL NFTs
@@ -27,7 +25,8 @@ interface SettingsV1 {
   // when the minting (for everyone) starts
   minting_start_time: number;
   // address to collect HAL NFT's cost
-  payment_address: Address;
+  // (bech32)
+  payment_address: string;
 }
 
 interface RefSpendSettingsV1 {

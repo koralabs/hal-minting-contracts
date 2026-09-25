@@ -1,76 +1,46 @@
-import {
-  decodeUplcData,
-  expectConstrData,
-  expectIntData,
-  expectListData,
-  makeConstrData,
-  makeIntData,
-  makeListData,
-  UplcData,
-} from "@helios-lang/uplc";
 import { Err, Ok, Result } from "ts-res";
 
+import {
+  constr,
+  expectConstr,
+  expectInt,
+  expectList,
+  fromCbor,
+  int,
+  list,
+  PlutusData,
+} from "../../cardano/index.js";
 import { convertError } from "../../helpers/index.js";
 import { WhitelistedItem, WhitelistedValue } from "../types/whitelist.js";
 
 const decodeWhitelistedValueFromCBOR = (
-  value: Buffer
+  value: Buffer | Uint8Array | string
 ): Result<WhitelistedValue, Error> => {
   try {
-    const data = decodeUplcData(value);
-    const listData = expectListData(
-      data,
-      "whitelisted_value must be List Data"
-    );
-
-    const whitelistedValue = listData.items.map(decodeWhitelistedItem);
-    return Ok(whitelistedValue);
+    const cbor = typeof value === "string" ? value : Buffer.from(value).toString("hex");
+    return Ok(expectList(fromCbor(cbor), "whitelisted_value").map(decodeWhitelistedItem));
   } catch (error) {
-    return Err(
-      new Error(`Failed to decode whitelisted item: ${convertError(error)}`)
-    );
+    return Err(new Error(`Failed to decode whitelisted item: ${convertError(error)}`));
   }
 };
 
-const decodeWhitelistedItem = (data: UplcData): WhitelistedItem => {
-  const constrData = expectConstrData(data, 0, 3);
-
-  const time_gap = Number(
-    expectIntData(constrData.fields[0], "time_gap must be Int data").value
-  );
-  const amount = Number(
-    expectIntData(constrData.fields[1], "amount must be Int data").value
-  );
-  const price = expectIntData(
-    constrData.fields[2],
-    "price must be Int data"
-  ).value;
-
+const decodeWhitelistedItem = (data: PlutusData): WhitelistedItem => {
+  const { fields } = expectConstr(data, "WhitelistedItem", 0, 3);
   return {
-    time_gap,
-    amount,
-    price,
+    time_gap: Number(expectInt(fields[0], "time_gap")),
+    amount: Number(expectInt(fields[1], "amount")),
+    price: expectInt(fields[2], "price"),
   };
 };
 
-const makeWhitelistedValueData = (
-  whitelistedValue: WhitelistedValue
-): UplcData => {
-  return makeListData(whitelistedValue.map(makeWhitelistedItemData));
-};
+const makeWhitelistedValueData = (whitelistedValue: WhitelistedValue): PlutusData =>
+  list(whitelistedValue.map(makeWhitelistedItemData));
 
-const makeWhitelistedItemData = (
-  whitelistedItem: WhitelistedItem
-): UplcData => {
-  const { time_gap, amount, price } = whitelistedItem;
-  return makeConstrData(0, [
-    makeIntData(time_gap),
-    makeIntData(amount),
-    makeIntData(price),
-  ]);
-};
+const makeWhitelistedItemData = ({ time_gap, amount, price }: WhitelistedItem): PlutusData =>
+  constr(0, [int(time_gap), int(amount), int(price)]);
 
 export {
+  decodeWhitelistedItem,
   decodeWhitelistedValueFromCBOR,
   makeWhitelistedItemData,
   makeWhitelistedValueData,

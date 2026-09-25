@@ -1,4 +1,4 @@
-import { UplcData } from "@helios-lang/uplc";
+import type { PlutusData } from "../../cardano/sdk.js";
 
 interface Settings {
   // mint withdrawal validator hash
@@ -7,7 +7,7 @@ interface Settings {
   // H.A.L. NFT's version
   mint_version: bigint;
   // setting v1 data
-  data: UplcData;
+  data: PlutusData;
 }
 
 interface RefSpendSettings {
@@ -15,7 +15,7 @@ interface RefSpendSettings {
   // this is ref_spend_proxy governor
   ref_spend_governor: string;
   // setting v1 data
-  data: UplcData;
+  data: PlutusData;
 }
 
 export type { RefSpendSettings, Settings };
