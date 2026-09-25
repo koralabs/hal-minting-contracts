@@ -1,165 +1,64 @@
-import { ShelleyAddress } from "@helios-lang/ledger";
 import {
-  expectByteArrayData,
-  expectConstrData,
-  expectIntData,
-  makeByteArrayData,
-  makeConstrData,
-  makeIntData,
-  UplcData,
-} from "@helios-lang/uplc";
-
+  bytes,
+  constr,
+  expectBytes,
+  expectConstr,
+  expectInt,
+  int,
+  PlutusData,
+} from "../../cardano/index.js";
 import { RefSpendSettingsV1, SettingsV1 } from "../types/index.js";
 import { buildAddressData, decodeAddressFromData } from "./common.js";
 
-const buildSettingsV1Data = (settings: SettingsV1): UplcData => {
-  const {
-    policy_id,
-    allowed_minter,
-    hal_nft_price,
-    minting_data_script_hash,
-    orders_spend_script_hash,
-    ref_spend_proxy_script_hash,
-    ref_spend_governor,
-    ref_spend_admin,
-    royalty_spend_script_hash,
-    minting_start_time,
-    payment_address,
-  } = settings;
-
-  return makeConstrData(0, [
-    makeByteArrayData(policy_id),
-    makeByteArrayData(allowed_minter),
-    makeIntData(hal_nft_price),
-    makeByteArrayData(minting_data_script_hash),
-    makeByteArrayData(orders_spend_script_hash),
-    makeByteArrayData(ref_spend_proxy_script_hash),
-    makeByteArrayData(ref_spend_governor),
-    makeByteArrayData(ref_spend_admin),
-    makeByteArrayData(royalty_spend_script_hash),
-    makeIntData(minting_start_time),
-    buildAddressData(payment_address as ShelleyAddress),
+const buildSettingsV1Data = (settings: SettingsV1): PlutusData =>
+  constr(0, [
+    bytes(settings.policy_id),
+    bytes(settings.allowed_minter),
+    int(settings.hal_nft_price),
+    bytes(settings.minting_data_script_hash),
+    bytes(settings.orders_spend_script_hash),
+    bytes(settings.ref_spend_proxy_script_hash),
+    bytes(settings.ref_spend_governor),
+    bytes(settings.ref_spend_admin),
+    bytes(settings.royalty_spend_script_hash),
+    int(settings.minting_start_time),
+    buildAddressData(settings.payment_address),
   ]);
-};
 
 const decodeSettingsV1Data = (
-  data: UplcData,
+  data: PlutusData,
   isMainnet: boolean
 ): SettingsV1 => {
-  const settingsV1ConstrData = expectConstrData(data, 0, 11);
-
-  // policy_id
-  const policy_id = expectByteArrayData(
-    settingsV1ConstrData.fields[0],
-    "policy_id must be ByteArray"
-  ).toHex();
-
-  // allowed_minter
-  const allowed_minter = expectByteArrayData(
-    settingsV1ConstrData.fields[1],
-    "allowed_minter must be ByteArray"
-  ).toHex();
-
-  // hal_nft_price
-  const hal_nft_price = expectIntData(
-    settingsV1ConstrData.fields[2],
-    "hal_nft_price must be Int"
-  ).value;
-
-  // minting_data_script_hash
-  const minting_data_script_hash = expectByteArrayData(
-    settingsV1ConstrData.fields[3],
-    "minting_data_script_hash must be ByteArray"
-  ).toHex();
-
-  // orders_spend_script_hash
-  const orders_spend_script_hash = expectByteArrayData(
-    settingsV1ConstrData.fields[4],
-    "orders_spend_script_hash must be ByteArray"
-  ).toHex();
-
-  // ref_spend_proxy_script_hash
-  const ref_spend_proxy_script_hash = expectByteArrayData(
-    settingsV1ConstrData.fields[5],
-    "ref_spend_proxy_script_hash must be ByteArray"
-  ).toHex();
-
-  // ref_spend_governor
-  const ref_spend_governor = expectByteArrayData(
-    settingsV1ConstrData.fields[6],
-    "ref_spend_governor must be ByteArray"
-  ).toHex();
-
-  // ref_spend_admin
-  const ref_spend_admin = expectByteArrayData(
-    settingsV1ConstrData.fields[7],
-    "ref_spend_admin must be ByteArray"
-  ).toHex();
-
-  // royalty_spend_script_hash
-  const royalty_spend_script_hash = expectByteArrayData(
-    settingsV1ConstrData.fields[8],
-    "royalty_spend_script_hash must be ByteArray"
-  ).toHex();
-
-  // minting_start_time
-  const minting_start_time = Number(
-    expectIntData(
-      settingsV1ConstrData.fields[9],
-      "minting_start_time must be Int"
-    ).value
-  );
-
-  // payment_address
-  const payment_address = decodeAddressFromData(
-    settingsV1ConstrData.fields[10],
-    isMainnet
-  );
-
+  const { fields } = expectConstr(data, "SettingsV1", 0, 11);
   return {
-    policy_id,
-    allowed_minter,
-    hal_nft_price,
-    minting_data_script_hash,
-    orders_spend_script_hash,
-    ref_spend_proxy_script_hash,
-    ref_spend_governor,
-    ref_spend_admin,
-    royalty_spend_script_hash,
-    minting_start_time,
-    payment_address,
+    policy_id: expectBytes(fields[0], "policy_id"),
+    allowed_minter: expectBytes(fields[1], "allowed_minter"),
+    hal_nft_price: expectInt(fields[2], "hal_nft_price"),
+    minting_data_script_hash: expectBytes(fields[3], "minting_data_script_hash"),
+    orders_spend_script_hash: expectBytes(fields[4], "orders_spend_script_hash"),
+    ref_spend_proxy_script_hash: expectBytes(
+      fields[5],
+      "ref_spend_proxy_script_hash"
+    ),
+    ref_spend_governor: expectBytes(fields[6], "ref_spend_governor"),
+    ref_spend_admin: expectBytes(fields[7], "ref_spend_admin"),
+    royalty_spend_script_hash: expectBytes(
+      fields[8],
+      "royalty_spend_script_hash"
+    ),
+    minting_start_time: Number(expectInt(fields[9], "minting_start_time")),
+    payment_address: decodeAddressFromData(fields[10], isMainnet),
   };
 };
 
-const buildRefSpendSettingsV1Data = (
-  settings: RefSpendSettingsV1
-): UplcData => {
-  const { policy_id, ref_spend_admin } = settings;
+const buildRefSpendSettingsV1Data = (settings: RefSpendSettingsV1): PlutusData =>
+  constr(0, [bytes(settings.policy_id), bytes(settings.ref_spend_admin)]);
 
-  return makeConstrData(0, [
-    makeByteArrayData(policy_id),
-    makeByteArrayData(ref_spend_admin),
-  ]);
-};
-
-const decodeRefSpendSettingsV1Data = (data: UplcData): RefSpendSettingsV1 => {
-  const refSpendSettingsV1ConstrData = expectConstrData(data, 0, 2);
-
-  // policy_id
-  const policy_id = expectByteArrayData(
-    refSpendSettingsV1ConstrData.fields[0],
-    "policy_id must be ByteArray"
-  ).toHex();
-
-  // ref_spend_admin
-  const ref_spend_admin = expectByteArrayData(
-    refSpendSettingsV1ConstrData.fields[1],
-    "ref_spend_admin must be ByteArray"
-  ).toHex();
-
+const decodeRefSpendSettingsV1Data = (data: PlutusData): RefSpendSettingsV1 => {
+  const { fields } = expectConstr(data, "RefSpendSettingsV1", 0, 2);
   return {
-    policy_id,
-    ref_spend_admin,
+    policy_id: expectBytes(fields[0], "policy_id"),
+    ref_spend_admin: expectBytes(fields[1], "ref_spend_admin"),
   };
 };
 

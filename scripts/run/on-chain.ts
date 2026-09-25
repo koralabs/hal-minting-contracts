@@ -1,7 +1,4 @@
-import { BlockFrostAPI } from "@blockfrost/blockfrost-js";
-import { bytesToHex } from "@helios-lang/codec-utils";
-import { makeAddress } from "@helios-lang/ledger";
-import { NetworkName } from "@helios-lang/tx-utils";
+import { BlockfrostTxClient } from "@koralabs/kora-labs-common/txBuild";
 import fs from "fs/promises";
 import prompts from "prompts";
 
@@ -17,8 +14,9 @@ import {
   buildSettingsData,
   buildSettingsV1Data,
   checkAccountRegistrationStatus,
+  completeTx,
   deploy,
-  getBlockfrostV0Client,
+  networkNameOf,
   RefSpendSettings,
   RefSpendSettingsV1,
   registerStakingAddresses,
@@ -75,15 +73,14 @@ const doOnChainActions = async (commandImpl: CommandImpl) => {
               },
             ]);
             const stakingAddresses = getStakingAddresses();
-            const blockfrostApi = new BlockFrostAPI({
-              projectId: BLOCKFROST_API_KEY,
+            const blockfrost = new BlockfrostTxClient({
+              network: NETWORK,
+              blockfrostApiKey: BLOCKFROST_API_KEY,
             });
-            const blockfrostV0Client =
-              getBlockfrostV0Client(BLOCKFROST_API_KEY);
 
             // check if staking address is registered or not
             const statuses = await checkAccountRegistrationStatus(
-              blockfrostApi,
+              blockfrost,
               stakingAddresses.mintStakingAddress,
               stakingAddresses.refSpendStakingAddress
             );
@@ -107,13 +104,15 @@ const doOnChainActions = async (commandImpl: CommandImpl) => {
               console.log(
                 "Please register the staking address(es) using Script CBOR, just a sec..."
               );
-              const txCbor = await registerStakingAddresses(
-                NETWORK as NetworkName,
-                makeAddress(address),
-                await blockfrostV0Client.getUtxos(address),
-                stakingAddressesToRegister
-              );
-              await handleTxCbor(txCbor);
+              const { cbor } = await completeTx({
+                plan: registerStakingAddresses(stakingAddressesToRegister),
+                network: networkNameOf(NETWORK),
+                walletUtxos: await blockfrost.getAddressUtxos(address),
+                changeAddress: address,
+                params: await blockfrost.getProtocolParameters(),
+                evaluate: (tx) => blockfrost.evaluateTx(tx),
+              });
+              await handleTxCbor(cbor);
             } else {
               console.log("\nStaking Addresses are already registered\n");
             }
@@ -134,7 +133,7 @@ const doOnChainActions = async (commandImpl: CommandImpl) => {
 };
 
 const buildSettingsDataCbor = () => {
-  const configs = GET_CONFIGS(NETWORK as NetworkName);
+  const configs = GET_CONFIGS(networkNameOf(NETWORK));
   const {
     MINT_VERSION,
     ADMIN_VERIFICATION_KEY_HASH,
@@ -148,7 +147,7 @@ const buildSettingsDataCbor = () => {
   } = configs;
 
   const contractsConfig = buildContracts({
-    isMainnet: (NETWORK as NetworkName) == "mainnet",
+    isMainnet: networkNameOf(NETWORK) == "mainnet",
     mint_version: MINT_VERSION,
     admin_verification_key_hash: ADMIN_VERIFICATION_KEY_HASH,
     orders_spend_randomizer: ORDERS_SPEND_RANDOMIZER,
@@ -166,33 +165,33 @@ const buildSettingsDataCbor = () => {
 
   // we already have settings asset using legacy handle.
   const settingsV1: SettingsV1 = {
-    policy_id: halPolicyHash.toHex(),
+    policy_id: halPolicyHash,
     allowed_minter: ALLOWED_MINTER,
     hal_nft_price: HAL_NFT_PRICE,
     minting_data_script_hash:
-      mintingDataConfig.mintingDataValidatorHash.toHex(),
+      mintingDataConfig.mintingDataValidatorHash,
     orders_spend_script_hash:
-      ordersSpendConfig.ordersSpendValidatorHash.toHex(),
+      ordersSpendConfig.ordersSpendValidatorHash,
     ref_spend_proxy_script_hash:
-      refSpendProxyConfig.refSpendProxyValidatorHash.toHex(),
-    ref_spend_governor: refSpendConfig.refSpendValidatorHash.toHex(),
+      refSpendProxyConfig.refSpendProxyValidatorHash,
+    ref_spend_governor: refSpendConfig.refSpendValidatorHash,
     ref_spend_admin: REF_SPEND_ADMIN,
     royalty_spend_script_hash:
-      royaltySpendConfig.royaltySpendValidatorHash.toHex(),
+      royaltySpendConfig.royaltySpendValidatorHash,
     minting_start_time: MINTING_START_TIME,
     payment_address: PAYMENT_ADDRESS,
   };
   const settings: Settings = {
-    mint_governor: mintConfig.mintValidatorHash.toHex(),
+    mint_governor: mintConfig.mintValidatorHash,
     mint_version: MINT_VERSION,
     data: buildSettingsV1Data(settingsV1),
   };
 
-  return bytesToHex(buildSettingsData(settings).toCbor());
+  return buildSettingsData(settings).toCbor();
 };
 
 const buildRefSpendSettingsDataCbor = () => {
-  const configs = GET_CONFIGS(NETWORK as NetworkName);
+  const configs = GET_CONFIGS(networkNameOf(NETWORK));
   const {
     MINT_VERSION,
     ADMIN_VERIFICATION_KEY_HASH,
@@ -202,7 +201,7 @@ const buildRefSpendSettingsDataCbor = () => {
   } = configs;
 
   const contractsConfig = buildContracts({
-    isMainnet: (NETWORK as NetworkName) == "mainnet",
+    isMainnet: networkNameOf(NETWORK) == "mainnet",
     mint_version: MINT_VERSION,
     admin_verification_key_hash: ADMIN_VERIFICATION_KEY_HASH,
     orders_spend_randomizer: ORDERS_SPEND_RANDOMIZER,
@@ -212,19 +211,19 @@ const buildRefSpendSettingsDataCbor = () => {
 
   // we already have settings asset using legacy handle.
   const refSpendSettingsV1: RefSpendSettingsV1 = {
-    policy_id: halPolicyHash.toHex(),
+    policy_id: halPolicyHash,
     ref_spend_admin: REF_SPEND_ADMIN,
   };
   const refSpendSettings: RefSpendSettings = {
-    ref_spend_governor: refSpendConfig.refSpendValidatorHash.toHex(),
+    ref_spend_governor: refSpendConfig.refSpendValidatorHash,
     data: buildRefSpendSettingsV1Data(refSpendSettingsV1),
   };
 
-  return bytesToHex(buildRefSpendSettingsData(refSpendSettings).toCbor());
+  return buildRefSpendSettingsData(refSpendSettings).toCbor();
 };
 
 const getStakingAddresses = () => {
-  const configs = GET_CONFIGS(NETWORK as NetworkName);
+  const configs = GET_CONFIGS(networkNameOf(NETWORK));
   const {
     MINT_VERSION,
     ADMIN_VERIFICATION_KEY_HASH,
@@ -233,7 +232,7 @@ const getStakingAddresses = () => {
   } = configs;
 
   const contractsConfig = buildContracts({
-    isMainnet: (NETWORK as NetworkName) == "mainnet",
+    isMainnet: networkNameOf(NETWORK) == "mainnet",
     mint_version: MINT_VERSION,
     admin_verification_key_hash: ADMIN_VERIFICATION_KEY_HASH,
     orders_spend_randomizer: ORDERS_SPEND_RANDOMIZER,
@@ -242,13 +241,13 @@ const getStakingAddresses = () => {
   const { mint: mintConfig, refSpend: refSpendConfig } = contractsConfig;
 
   return {
-    mintStakingAddress: mintConfig.mintStakingAddress.toBech32(),
-    refSpendStakingAddress: refSpendConfig.refSpendStakingAddress.toBech32(),
+    mintStakingAddress: mintConfig.mintStakingAddress,
+    refSpendStakingAddress: refSpendConfig.refSpendStakingAddress,
   };
 };
 
 const doDeployActions = async () => {
-  const configs = GET_CONFIGS(NETWORK as NetworkName);
+  const configs = GET_CONFIGS(networkNameOf(NETWORK));
   const {
     MINT_VERSION,
     ADMIN_VERIFICATION_KEY_HASH,
@@ -268,7 +267,7 @@ const doDeployActions = async () => {
           description: contract,
           value: async () => {
             const deployData = await deploy({
-              isMainnet: (NETWORK as NetworkName) == "mainnet",
+              isMainnet: networkNameOf(NETWORK) == "mainnet",
               mintVersion: MINT_VERSION,
               adminVerificationKeyHash: ADMIN_VERIFICATION_KEY_HASH,
               ordersSpendRandomizer: ORDERS_SPEND_RANDOMIZER,

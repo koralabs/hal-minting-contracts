@@ -1,10 +1,8 @@
-import { bytesToHex } from "@helios-lang/codec-utils";
-import { makeTxOutputId, TxInput } from "@helios-lang/ledger";
-import { BlockfrostV0Client } from "@helios-lang/tx-utils";
-import { decodeUplcProgramV2FromCbor, UplcProgramV2 } from "@helios-lang/uplc";
 import { ScriptDetails, ScriptType } from "@koralabs/kora-labs-common";
+import { type BlockfrostTxClient, toDoubleCbor } from "@koralabs/kora-labs-common/txBuild";
 import { Err, Ok, Result } from "ts-res";
 
+import { Utxo } from "../cardano/index.js";
 import { CONTRACT_NAME } from "../constants/index.js";
 import {
   buildContracts,
@@ -12,6 +10,7 @@ import {
   makeMintProxyUplcProgramParameterDatum,
   makeOrdersSpendUplcProgramParameterDatum,
   makeRoyaltySpendUplcProgramParameterDatum,
+  PlutusV2Script,
 } from "../contracts/index.js";
 import { convertError, invariant } from "../helpers/index.js";
 import { fetchDeployedScript } from "../utils/contract.js";
@@ -26,8 +25,10 @@ interface DeployParams {
 }
 
 interface DeployData {
+  /** The applied script, double-CBOR (as v1/Helios emitted it; the ledger form is its content). */
   optimizedCbor: string;
   unOptimizedCbor?: string;
+  /** The validator's parameters, recorded as the reference-script UTxO's inline datum. */
   datumCbor?: string;
   validatorHash: string;
   policyId?: string;
@@ -35,10 +36,13 @@ interface DeployData {
   scriptStakingAddress?: string;
 }
 
+const cbors = (script: PlutusV2Script) => ({
+  optimizedCbor: toDoubleCbor(script.cbor),
+  unOptimizedCbor: toDoubleCbor(script.unoptimizedCbor),
+});
+
 /**
- * @description Deploy one of De-Mi contracts
- * @param {DeployParams} params
- * @returns {Promise<DeployData>} Deploy Data
+ * @description Deploy data of one of the HAL contracts
  */
 const deploy = async (params: DeployParams): Promise<DeployData> => {
   const {
@@ -50,264 +54,119 @@ const deploy = async (params: DeployParams): Promise<DeployData> => {
     contractName,
   } = params;
 
-  const contractsConfig = buildContracts({
+  const {
+    halPolicyHash,
+    mintProxy,
+    mint,
+    mintingData,
+    ordersSpend,
+    refSpendProxy,
+    refSpend,
+    royaltySpend,
+  } = buildContracts({
     isMainnet,
     mint_version: mintVersion,
     admin_verification_key_hash: adminVerificationKeyHash,
     orders_spend_randomizer: ordersSpendRandomizer,
     royalty_spend_admin: royaltySpendAdmin,
   });
-  const {
-    halPolicyHash,
-    mintProxy: mintProxyConfig,
-    mint: mintConfig,
-    mintingData: mintingDataConfig,
-    ordersSpend: ordersSpendConfig,
-    refSpendProxy: refSpendProxyConfig,
-    refSpend: refSpendConfig,
-    royaltySpend: royaltySpendConfig,
-  } = contractsConfig;
 
   switch (contractName) {
     case CONTRACT_NAME.MINT_PROXY_MINT:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          mintProxyConfig.mintProxyMintUplcProgram
-        ),
-        datumCbor: bytesToHex(
-          makeMintProxyUplcProgramParameterDatum(mintVersion).data.toCbor()
-        ),
-        validatorHash: mintProxyConfig.mintProxyPolicyHash.toHex(),
-        policyId: mintProxyConfig.mintProxyPolicyHash.toHex(),
+        ...cbors(mintProxy.mintProxyMintScript),
+        datumCbor: makeMintProxyUplcProgramParameterDatum(mintVersion).toCbor(),
+        validatorHash: mintProxy.mintProxyPolicyHash,
+        policyId: mintProxy.mintProxyPolicyHash,
       };
     case CONTRACT_NAME.MINT_WITHDRAW:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          mintConfig.mintWithdrawUplcProgram
-        ),
-        validatorHash: mintConfig.mintValidatorHash.toHex(),
-        scriptStakingAddress: mintConfig.mintStakingAddress.toBech32(),
+        ...cbors(mint.mintWithdrawScript),
+        validatorHash: mint.mintValidatorHash,
+        scriptStakingAddress: mint.mintStakingAddress,
       };
     case CONTRACT_NAME.MINTING_DATA_SPEND:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          mintingDataConfig.mintingDataSpendUplcProgram
-        ),
-        datumCbor: bytesToHex(
-          makeMintingDataUplcProgramParameterDatum(
-            adminVerificationKeyHash
-          ).data.toCbor()
-        ),
-        validatorHash: mintingDataConfig.mintingDataValidatorHash.toHex(),
-        scriptAddress: mintingDataConfig.mintingDataValidatorAddress.toBech32(),
+        ...cbors(mintingData.mintingDataSpendScript),
+        datumCbor: makeMintingDataUplcProgramParameterDatum(adminVerificationKeyHash).toCbor(),
+        validatorHash: mintingData.mintingDataValidatorHash,
+        scriptAddress: mintingData.mintingDataValidatorAddress,
       };
     case CONTRACT_NAME.ORDERS_SPEND_SPEND:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          ordersSpendConfig.ordersSpendUplcProgram
-        ),
-        datumCbor: bytesToHex(
-          makeOrdersSpendUplcProgramParameterDatum(
-            halPolicyHash.toHex(),
-            ordersSpendRandomizer
-          ).data.toCbor()
-        ),
-        validatorHash: ordersSpendConfig.ordersSpendValidatorHash.toHex(),
-        scriptAddress: ordersSpendConfig.ordersSpendValidatorAddress.toBech32(),
+        ...cbors(ordersSpend.ordersSpendScript),
+        datumCbor: makeOrdersSpendUplcProgramParameterDatum(
+          halPolicyHash,
+          ordersSpendRandomizer
+        ).toCbor(),
+        validatorHash: ordersSpend.ordersSpendValidatorHash,
+        scriptAddress: ordersSpend.ordersSpendValidatorAddress,
       };
     case CONTRACT_NAME.REF_SPEND_PROXY_SPEND:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          refSpendProxyConfig.refSpendProxyUplcProgram
-        ),
-        validatorHash: refSpendProxyConfig.refSpendProxyValidatorHash.toHex(),
-        scriptAddress:
-          refSpendProxyConfig.refSpendProxyValidatorAddress.toBech32(),
+        ...cbors(refSpendProxy.refSpendProxyScript),
+        validatorHash: refSpendProxy.refSpendProxyValidatorHash,
+        scriptAddress: refSpendProxy.refSpendProxyValidatorAddress,
       };
     case CONTRACT_NAME.REF_SPEND_WITHDRAW:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          refSpendConfig.refSpendUplcProgram
-        ),
-        validatorHash: refSpendConfig.refSpendValidatorHash.toHex(),
-        scriptStakingAddress: refSpendConfig.refSpendStakingAddress.toBech32(),
+        ...cbors(refSpend.refSpendScript),
+        validatorHash: refSpend.refSpendValidatorHash,
+        scriptStakingAddress: refSpend.refSpendStakingAddress,
       };
     case CONTRACT_NAME.ROYALTY_SPEND_SPEND:
       return {
-        ...extractScriptCborsFromUplcProgram(
-          royaltySpendConfig.royaltySpendUplcProgram
-        ),
-        datumCbor: bytesToHex(
-          makeRoyaltySpendUplcProgramParameterDatum(
-            royaltySpendAdmin
-          ).data.toCbor()
-        ),
-        validatorHash: royaltySpendConfig.royaltySpendValidatorHash.toHex(),
-        scriptAddress:
-          royaltySpendConfig.royaltySpendValidatorAddress.toBech32(),
+        ...cbors(royaltySpend.royaltySpendScript),
+        datumCbor: makeRoyaltySpendUplcProgramParameterDatum(royaltySpendAdmin).toCbor(),
+        validatorHash: royaltySpend.royaltySpendValidatorHash,
+        scriptAddress: royaltySpend.royaltySpendValidatorAddress,
       };
     default:
-      throw new Error(
-        `Contract name must be one of ${Object.values(CONTRACT_NAME).join(
-          ", "
-        )}`
-      );
+      throw new Error(`Contract name must be one of ${Object.values(CONTRACT_NAME).join(", ")}`);
   }
-};
-
-const extractScriptCborsFromUplcProgram = (
-  uplcProgram: UplcProgramV2
-): { optimizedCbor: string; upOptimizedCbor?: string } => {
-  return {
-    optimizedCbor: bytesToHex(uplcProgram.toCbor()),
-    upOptimizedCbor: uplcProgram.alt
-      ? bytesToHex(uplcProgram.alt.toCbor())
-      : undefined,
-  };
 };
 
 interface DeployedScripts {
   mintProxyScriptDetails: ScriptDetails;
-  mintProxyScriptTxInput: TxInput;
+  mintProxyScriptTxInput: Utxo;
   mintingDataScriptDetails: ScriptDetails;
-  mintingDataScriptTxInput: TxInput;
+  mintingDataScriptTxInput: Utxo;
   mintScriptDetails: ScriptDetails;
-  mintScriptTxInput: TxInput;
+  mintScriptTxInput: Utxo;
   ordersSpendScriptDetails: ScriptDetails;
-  ordersSpendScriptTxInput: TxInput;
+  ordersSpendScriptTxInput: Utxo;
   refSpendProxyScriptDetails: ScriptDetails;
-  refSpendProxyScriptTxInput: TxInput;
+  refSpendProxyScriptTxInput: Utxo;
   refSpendScriptDetails: ScriptDetails;
-  refSpendScriptTxInput: TxInput;
+  refSpendScriptTxInput: Utxo;
   royaltySpendScriptDetails: ScriptDetails;
-  royaltySpendScriptTxInput: TxInput;
+  royaltySpendScriptTxInput: Utxo;
 }
 
+/** The deployed script (per the Handle API) and its reference-script UTxO (per Blockfrost). */
+const fetchDeployed = async (
+  blockfrost: Pick<BlockfrostTxClient, "getUtxo">,
+  type: ScriptType,
+  label: string
+): Promise<[ScriptDetails, Utxo]> => {
+  const details = await fetchDeployedScript(type);
+  invariant(details.refScriptUtxo, `${label} has no Ref script UTxO`);
+  const utxo = await blockfrost.getUtxo(details.refScriptUtxo);
+  invariant(utxo[1].scriptReference, `${label} Ref script UTxO carries no script`);
+  return [details, utxo];
+};
+
 const fetchAllDeployedScripts = async (
-  blockfrostV0Client: BlockfrostV0Client
+  blockfrost: Pick<BlockfrostTxClient, "getUtxo">
 ): Promise<Result<DeployedScripts, string>> => {
   try {
-    // "halmntprx.mint"
-    const mintProxyScriptDetails = await fetchDeployedScript(
-      ScriptType.HAL_MINT_PROXY
-    );
-    invariant(
-      mintProxyScriptDetails.refScriptUtxo,
-      "Mint Proxy has no Ref script UTxO"
-    );
-    const mintProxyScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(mintProxyScriptDetails.refScriptUtxo)
-    );
-    if (mintProxyScriptDetails.unoptimizedCbor)
-      mintProxyScriptTxInput.output.refScript = (
-        mintProxyScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(mintProxyScriptDetails.unoptimizedCbor)
-      );
-
-    // "halmnt.withdraw"
-    const mintScriptDetails = await fetchDeployedScript(ScriptType.HAL_MINT);
-    invariant(mintScriptDetails.refScriptUtxo, "Mint has no Ref script UTxO");
-    const mintScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(mintScriptDetails.refScriptUtxo)
-    );
-    if (mintScriptDetails.unoptimizedCbor)
-      mintScriptTxInput.output.refScript = (
-        mintScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(mintScriptDetails.unoptimizedCbor)
-      );
-
-    // "halmntmpt.spend"
-    const mintingDataScriptDetails = await fetchDeployedScript(
-      ScriptType.HAL_MINTING_DATA
-    );
-    invariant(
-      mintingDataScriptDetails.refScriptUtxo,
-      "Minting Data has no Ref script UTxO"
-    );
-    const mintingDataScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(mintingDataScriptDetails.refScriptUtxo)
-    );
-    if (mintingDataScriptDetails.unoptimizedCbor)
-      mintingDataScriptTxInput.output.refScript = (
-        mintingDataScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(mintingDataScriptDetails.unoptimizedCbor)
-      );
-
-    // "halord.spend"
-    const ordersSpendScriptDetails = await fetchDeployedScript(
-      ScriptType.HAL_ORDERS_SPEND
-    );
-    invariant(
-      ordersSpendScriptDetails.refScriptUtxo,
-      "Orders Spend has no Ref script UTxO"
-    );
-    const ordersSpendScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(ordersSpendScriptDetails.refScriptUtxo)
-    );
-    if (ordersSpendScriptDetails.unoptimizedCbor)
-      ordersSpendScriptTxInput.output.refScript = (
-        ordersSpendScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(ordersSpendScriptDetails.unoptimizedCbor)
-      );
-
-    // "halrefprx.spend"
-    const refSpendProxyScriptDetails = await fetchDeployedScript(
-      ScriptType.HAL_REF_SPEND_PROXY
-    );
-    invariant(
-      refSpendProxyScriptDetails.refScriptUtxo,
-      "Ref Spend Proxy has no Ref script UTxO"
-    );
-    const refSpendProxyScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(refSpendProxyScriptDetails.refScriptUtxo)
-    );
-    if (refSpendProxyScriptDetails.unoptimizedCbor)
-      refSpendProxyScriptTxInput.output.refScript = (
-        refSpendProxyScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(refSpendProxyScriptDetails.unoptimizedCbor)
-      );
-
-    // "halref.withdraw"
-    const refSpendScriptDetails = await fetchDeployedScript(
-      ScriptType.HAL_REF_SPEND
-    );
-    invariant(
-      refSpendScriptDetails.refScriptUtxo,
-      "Ref Spend has no Ref script UTxO"
-    );
-    const refSpendScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(refSpendScriptDetails.refScriptUtxo)
-    );
-    if (refSpendScriptDetails.unoptimizedCbor)
-      refSpendScriptTxInput.output.refScript = (
-        refSpendScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(refSpendScriptDetails.unoptimizedCbor)
-      );
-
-    // "halroy.spend"
-    const royaltySpendScriptDetails = await fetchDeployedScript(
-      ScriptType.HAL_ROYALTY_SPEND
-    );
-    invariant(
-      royaltySpendScriptDetails.refScriptUtxo,
-      "Royalty Spend has no Ref script UTxO"
-    );
-    const royaltySpendScriptTxInput = await blockfrostV0Client.getUtxo(
-      makeTxOutputId(royaltySpendScriptDetails.refScriptUtxo)
-    );
-    if (royaltySpendScriptDetails.unoptimizedCbor)
-      royaltySpendScriptTxInput.output.refScript = (
-        royaltySpendScriptTxInput.output.refScript as UplcProgramV2
-      )?.withAlt(
-        decodeUplcProgramV2FromCbor(royaltySpendScriptDetails.unoptimizedCbor)
-      );
-
+    const [mintProxyScriptDetails, mintProxyScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_MINT_PROXY, "Mint Proxy");
+    const [mintScriptDetails, mintScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_MINT, "Mint");
+    const [mintingDataScriptDetails, mintingDataScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_MINTING_DATA, "Minting Data");
+    const [ordersSpendScriptDetails, ordersSpendScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_ORDERS_SPEND, "Orders Spend");
+    const [refSpendProxyScriptDetails, refSpendProxyScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_REF_SPEND_PROXY, "Ref Spend Proxy");
+    const [refSpendScriptDetails, refSpendScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_REF_SPEND, "Ref Spend");
+    const [royaltySpendScriptDetails, royaltySpendScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_ROYALTY_SPEND, "Royalty Spend");
     return Ok({
       mintProxyScriptDetails,
       mintProxyScriptTxInput,

@@ -1,14 +1,14 @@
-import { ShelleyAddress } from "@helios-lang/ledger";
-import { UplcData } from "@helios-lang/uplc";
+import type { PlutusData } from "../../cardano/sdk.js";
 
 interface RoyaltyDatum {
   recipients: Array<RoyaltyRecipient>;
   version: number;
-  extra: UplcData;
+  extra: PlutusData;
 }
 
 interface RoyaltyRecipient {
-  address: ShelleyAddress;
+  // bech32
+  address: string;
   // percentage (0.1 - 100)
   fee: number;
   // fixed (absolute) fee

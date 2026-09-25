@@ -1,76 +1,39 @@
-import {
-  InlineTxOutputDatum,
-  makeInlineTxOutputDatum,
-} from "@helios-lang/ledger";
-import {
-  makeByteArrayData,
-  makeIntData,
-  makeListData,
-  makeUplcDataValue,
-  UplcValue,
-} from "@helios-lang/uplc";
+// Validator parameters (in application order) and the datum that records them on the deployed
+// reference-script UTxO (a list of the same values).
+import { bytes, int, list, PlutusData } from "../cardano/index.js";
 
-const makeMintProxyUplcProgramParameter = (
-  mint_version: bigint
-): UplcValue[] => {
-  return [makeUplcDataValue(makeIntData(mint_version))];
-};
-
-const makeMintProxyUplcProgramParameterDatum = (
-  mint_version: bigint
-): InlineTxOutputDatum => {
-  return makeInlineTxOutputDatum(makeListData([makeIntData(mint_version)]));
-};
+const makeMintProxyUplcProgramParameter = (mint_version: bigint): PlutusData[] => [
+  int(mint_version),
+];
 
 const makeMintingDataUplcProgramParameter = (
   admin_verification_key_hash: string
-): UplcValue[] => {
-  return [makeUplcDataValue(makeByteArrayData(admin_verification_key_hash))];
-};
-
-const makeMintingDataUplcProgramParameterDatum = (
-  admin_verification_key_hash: string
-): InlineTxOutputDatum => {
-  return makeInlineTxOutputDatum(
-    makeListData([makeByteArrayData(admin_verification_key_hash)])
-  );
-};
+): PlutusData[] => [bytes(admin_verification_key_hash)];
 
 const makeOrdersSpendUplcProgramParameter = (
   hal_policy_id: string,
   randomizer: string
-): UplcValue[] => {
-  return [
-    makeUplcDataValue(makeByteArrayData(hal_policy_id)),
-    makeUplcDataValue(makeByteArrayData(randomizer)),
-  ];
-};
+): PlutusData[] => [bytes(hal_policy_id), bytes(randomizer)];
+
+const makeRoyaltySpendUplcProgramParameter = (
+  royalty_spend_admin: string
+): PlutusData[] => [bytes(royalty_spend_admin)];
+
+const makeMintProxyUplcProgramParameterDatum = (mint_version: bigint): PlutusData =>
+  list(makeMintProxyUplcProgramParameter(mint_version));
+
+const makeMintingDataUplcProgramParameterDatum = (
+  admin_verification_key_hash: string
+): PlutusData => list(makeMintingDataUplcProgramParameter(admin_verification_key_hash));
 
 const makeOrdersSpendUplcProgramParameterDatum = (
   hal_policy_id: string,
   randomizer: string
-): InlineTxOutputDatum => {
-  return makeInlineTxOutputDatum(
-    makeListData([
-      makeByteArrayData(hal_policy_id),
-      makeByteArrayData(randomizer),
-    ])
-  );
-};
-
-const makeRoyaltySpendUplcProgramParameter = (
-  royalty_spend_admin: string
-): UplcValue[] => {
-  return [makeUplcDataValue(makeByteArrayData(royalty_spend_admin))];
-};
+): PlutusData => list(makeOrdersSpendUplcProgramParameter(hal_policy_id, randomizer));
 
 const makeRoyaltySpendUplcProgramParameterDatum = (
   royalty_spend_admin: string
-): InlineTxOutputDatum => {
-  return makeInlineTxOutputDatum(
-    makeListData([makeByteArrayData(royalty_spend_admin)])
-  );
-};
+): PlutusData => list(makeRoyaltySpendUplcProgramParameter(royalty_spend_admin));
 
 export {
   makeMintingDataUplcProgramParameter,

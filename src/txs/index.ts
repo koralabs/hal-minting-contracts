@@ -1,5 +1,6 @@
 export * from "./deploy.js";
 export * from "./order.js";
+export * from "./plan.js";
 export * from "./prepareMint.js";
 export * from "./prepareOrders.js";
 export * from "./proof.js";

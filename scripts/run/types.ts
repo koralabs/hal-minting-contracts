@@ -1,9 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  BlockfrostV0Client,
-  makeBlockfrostV0Client,
-  NetworkName,
-} from "@helios-lang/tx-utils";
+import { BlockfrostTxClient } from "@koralabs/kora-labs-common/txBuild";
 import { existsSync } from "fs";
 
 import { BLOCKFROST_API_KEY, NETWORK } from "../../src/constants/index.js";
@@ -11,15 +7,15 @@ import { BLOCKFROST_API_KEY, NETWORK } from "../../src/constants/index.js";
 class CommandImpl {
   storePath: string;
   mpt: Trie | null;
-  blockfrostCardanoClient: BlockfrostV0Client;
+  blockfrost: BlockfrostTxClient;
   running = true;
 
   constructor(storePath: string) {
     this.storePath = storePath;
-    this.blockfrostCardanoClient = makeBlockfrostV0Client(
-      NETWORK as NetworkName,
-      BLOCKFROST_API_KEY
-    );
+    this.blockfrost = new BlockfrostTxClient({
+      network: NETWORK,
+      blockfrostApiKey: BLOCKFROST_API_KEY,
+    });
     this.mpt = null;
   }
 

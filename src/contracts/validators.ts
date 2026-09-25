@@ -1,7 +1,8 @@
-import { decodeUplcProgramV2FromCbor, UplcProgramV2 } from "@helios-lang/uplc";
+// The HAL validators from the Aiken blueprint, with their parameters applied (scalus).
+import { applyParamsToScript, plutusScriptHash } from "@koralabs/kora-labs-common/txBuild";
 
+import { Cardano, PlutusData } from "../cardano/index.js";
 import { CONTRACT_NAME } from "../constants/index.js";
-import { invariant } from "../helpers/index.js";
 import optimizedBlueprint from "./optimized-blueprint.js";
 import unOptimizedBlueprint from "./unoptimized-blueprint.js";
 import {
@@ -11,154 +12,71 @@ import {
   makeRoyaltySpendUplcProgramParameter,
 } from "./utils.js";
 
-const getMintProxyMintUplcProgram = (mint_version: bigint): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.MINT_PROXY_MINT
-  );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.MINT_PROXY_MINT
-  );
-  invariant(
-    !!optimizedFoundValidator && !!unOptimizedFoundValidator,
-    "Mint Proxy Mint Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(optimizedFoundValidator.compiledCode)
-    .apply(makeMintProxyUplcProgramParameter(mint_version))
-    .withAlt(
-      decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode).apply(
-        makeMintProxyUplcProgramParameter(mint_version)
-      )
-    );
+/** A parameter-applied Plutus V2 script. */
+interface PlutusV2Script {
+  /** Single-CBOR (a CBOR byte string of the flat program), as a reference script / blueprint holds it. */
+  cbor: string;
+  /** The same program built from the unoptimized (traced) blueprint — for debugging only. */
+  unoptimizedCbor: string;
+  hash: string;
+}
+
+const compiledCode = (
+  blueprint: { validators: { title: string; compiledCode: string }[] },
+  title: CONTRACT_NAME
+): string => {
+  const validator = blueprint.validators.find((v) => v.title == title);
+  if (!validator) throw new Error(`Validator ${title} not found in blueprint`);
+  return validator.compiledCode;
 };
 
-const getMintWithdrawUplcProgram = (): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.MINT_WITHDRAW
-  );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.MINT_WITHDRAW
-  );
-  invariant(
-    !!optimizedFoundValidator && unOptimizedFoundValidator,
-    "Mint Withdrawal Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(
-    optimizedFoundValidator.compiledCode
-  ).withAlt(
-    decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode)
-  );
+const buildScript = (title: CONTRACT_NAME, params: PlutusData[]): PlutusV2Script => {
+  const cbor = params.length
+    ? applyParamsToScript(compiledCode(optimizedBlueprint, title), params)
+    : compiledCode(optimizedBlueprint, title);
+  const unoptimized = compiledCode(unOptimizedBlueprint, title);
+  return {
+    cbor,
+    unoptimizedCbor: params.length ? applyParamsToScript(unoptimized, params) : unoptimized,
+    hash: plutusScriptHash(cbor, Cardano.PlutusLanguageVersion.V2),
+  };
 };
+
+const getMintProxyMintScript = (mint_version: bigint) =>
+  buildScript(CONTRACT_NAME.MINT_PROXY_MINT, makeMintProxyUplcProgramParameter(mint_version));
+
+const getMintWithdrawScript = () => buildScript(CONTRACT_NAME.MINT_WITHDRAW, []);
 
 // this is `minting_data_script_hash`
-const getMintingDataSpendUplcProgram = (
-  admin_verification_key_hash: string
-): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.MINTING_DATA_SPEND
+const getMintingDataSpendScript = (admin_verification_key_hash: string) =>
+  buildScript(
+    CONTRACT_NAME.MINTING_DATA_SPEND,
+    makeMintingDataUplcProgramParameter(admin_verification_key_hash)
   );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.MINTING_DATA_SPEND
-  );
-  invariant(
-    !!optimizedFoundValidator && !!unOptimizedFoundValidator,
-    "Minting Data Spend Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(optimizedFoundValidator.compiledCode)
-    .apply(makeMintingDataUplcProgramParameter(admin_verification_key_hash))
-    .withAlt(
-      decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode).apply(
-        makeMintingDataUplcProgramParameter(admin_verification_key_hash)
-      )
-    );
-};
 
-const getOrdersSpendUplcProgram = (
-  hal_policy_id: string,
-  randomizer: string
-): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.ORDERS_SPEND_SPEND
+const getOrdersSpendScript = (hal_policy_id: string, randomizer: string) =>
+  buildScript(
+    CONTRACT_NAME.ORDERS_SPEND_SPEND,
+    makeOrdersSpendUplcProgramParameter(hal_policy_id, randomizer)
   );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.ORDERS_SPEND_SPEND
-  );
-  invariant(
-    !!optimizedFoundValidator && !!unOptimizedFoundValidator,
-    "Orders Spend Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(optimizedFoundValidator.compiledCode)
-    .apply(makeOrdersSpendUplcProgramParameter(hal_policy_id, randomizer))
-    .withAlt(
-      decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode).apply(
-        makeOrdersSpendUplcProgramParameter(hal_policy_id, randomizer)
-      )
-    );
-};
 
-const getRefSpendProxyUplcProgram = (): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.REF_SPEND_PROXY_SPEND
-  );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.REF_SPEND_PROXY_SPEND
-  );
-  invariant(
-    !!optimizedFoundValidator && !!unOptimizedFoundValidator,
-    "Ref Spend Proxy Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(
-    optimizedFoundValidator.compiledCode
-  ).withAlt(
-    decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode)
-  );
-};
+const getRefSpendProxyScript = () => buildScript(CONTRACT_NAME.REF_SPEND_PROXY_SPEND, []);
 
-const getRefSpendUplcProgram = (): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.REF_SPEND_WITHDRAW
-  );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.REF_SPEND_WITHDRAW
-  );
-  invariant(
-    !!optimizedFoundValidator && !!unOptimizedFoundValidator,
-    "Ref Spend Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(
-    optimizedFoundValidator.compiledCode
-  ).withAlt(
-    decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode)
-  );
-};
+const getRefSpendScript = () => buildScript(CONTRACT_NAME.REF_SPEND_WITHDRAW, []);
 
-const getRoyaltySpendUplcProgram = (
-  royalty_spend_admin: string
-): UplcProgramV2 => {
-  const optimizedFoundValidator = optimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.ROYALTY_SPEND_SPEND
+const getRoyaltySpendScript = (royalty_spend_admin: string) =>
+  buildScript(
+    CONTRACT_NAME.ROYALTY_SPEND_SPEND,
+    makeRoyaltySpendUplcProgramParameter(royalty_spend_admin)
   );
-  const unOptimizedFoundValidator = unOptimizedBlueprint.validators.find(
-    (validator) => validator.title == CONTRACT_NAME.ROYALTY_SPEND_SPEND
-  );
-  invariant(
-    !!optimizedFoundValidator && !!unOptimizedFoundValidator,
-    "Ref Spend Validator not found"
-  );
-  return decodeUplcProgramV2FromCbor(optimizedFoundValidator.compiledCode)
-    .apply(makeRoyaltySpendUplcProgramParameter(royalty_spend_admin))
-    .withAlt(
-      decodeUplcProgramV2FromCbor(unOptimizedFoundValidator.compiledCode).apply(
-        makeRoyaltySpendUplcProgramParameter(royalty_spend_admin)
-      )
-    );
-};
 
+export type { PlutusV2Script };
 export {
-  getMintingDataSpendUplcProgram,
-  getMintProxyMintUplcProgram,
-  getMintWithdrawUplcProgram,
-  getOrdersSpendUplcProgram,
-  getRefSpendProxyUplcProgram,
-  getRefSpendUplcProgram,
-  getRoyaltySpendUplcProgram,
+  getMintingDataSpendScript,
+  getMintProxyMintScript,
+  getMintWithdrawScript,
+  getOrdersSpendScript,
+  getRefSpendProxyScript,
+  getRefSpendScript,
+  getRoyaltySpendScript,
 };

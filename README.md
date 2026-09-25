@@ -37,6 +37,16 @@ They have 2 hours early access
 
 They have 1 hour early access
 
+## Off-chain library (2.0.0: cardano-sdk only)
+
+`src/` is built on `@cardano-sdk/core` and `@koralabs/kora-labs-common/txBuild`; no Helios package remains.
+Builders return a `HalTxPlan`; `completeTx` adds the paying wallet and finalizes it (ex-units from the
+evaluator you pass: the node through `BlockfrostTxClient.evaluateTx`, or `localEvaluator` offline).
+Validator parameters are applied with scalus and reproduce the Helios-era scripts byte-for-byte
+(`tests/heliosParity.unit.ts`). Migration from 1.x: addresses are bech32 strings, Plutus data is
+`Serialization.PlutusData`, UTxOs are `Cardano.Utxo`, and `DeployedScripts` is fetched with a
+`BlockfrostTxClient`.
+
 ## Smart Contract
 
 [Smart Contract Specification](https://github.com/golddydev/hal-mint/blob/main/smart-contract/smart-contract-spec.md)

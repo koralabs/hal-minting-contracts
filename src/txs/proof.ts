@@ -1,5 +1,4 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { Address } from "@helios-lang/ledger";
 import { Err, Ok, Result } from "ts-res";
 
 import { MPT_MINTED_VALUE } from "../constants/index.js";
@@ -15,7 +14,8 @@ interface Proof {
 interface OrderedAsset {
   hexName: string;
   utf8Name: string;
-  destinationAddress: Address;
+  /** bech32 */
+  destinationAddress: string;
   price: bigint;
 }
 

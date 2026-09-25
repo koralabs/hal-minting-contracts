@@ -1,5 +1,3 @@
-import { makeAddress } from "@helios-lang/ledger";
-
 // ------- H.A.L. Mint Contracts Config -------
 // This will change smart contracts compiled code
 
@@ -27,9 +25,8 @@ export const ALLOWED_MINTER =
 // HAL NFT Price
 export const HAL_NFT_PRICE = 180_000_000n;
 
-export const PAYMENT_ADDRESS = makeAddress(
-  "addr1xylxvryvzxddvl6jjeyjut2kmyhaf5pjmc933z74gmenk2e7vcxgcyv66el499jf9ck4dkf06ngr9hstrz9a23hn8v4sc89s5z"
-);
+export const PAYMENT_ADDRESS =
+  "addr1xylxvryvzxddvl6jjeyjut2kmyhaf5pjmc933z74gmenk2e7vcxgcyv66el499jf9ck4dkf06ngr9hstrz9a23hn8v4sc89s5z";
 
 // minting start time (POSIX time)
 // after when anyone can mint HAL NFTs

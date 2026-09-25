@@ -1,7 +1,7 @@
 // NOTE:
 // Configs are only used when make Settings Datum
 
-import { NetworkName } from "@helios-lang/tx-utils";
+import { NetworkName } from "../../src/cardano/index.js";
 
 import * as MAINNET_CONFIGS from "./mainnet.config.js";
 import * as PREPROD_CONFIGS from "./preprod.config.js";
