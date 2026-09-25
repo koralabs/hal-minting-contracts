@@ -36,17 +36,18 @@ interface HandleApiHandle {
 
 /** The UTxO holding `handleName` (per the Handle API), with its inline datum. */
 const fetchHandleUtxo = async (handleName: string): Promise<Utxo> => {
-  const handle: HandleApiHandle = await fetchApi(`handles/${handleName}`).then((res) =>
-    res.json()
-  );
-  const datumCbor: string = await fetchApi(`handles/${handleName}/datum`, {
+  const json = async (path: string) => {
+    const response = await fetchApi(path);
+    if (!response.ok) throw new Error(`${handleName}: GET ${path} failed with HTTP ${response.status}`);
+    return response.json();
+  };
+  const handle: HandleApiHandle = await json(`handles/${handleName}`);
+  const datumResponse = await fetchApi(`handles/${handleName}/datum`, {
     headers: { Accept: "text/plain" },
-  }).then((res) => res.text());
+  });
+  const datumCbor = datumResponse.ok ? (await datumResponse.text()).trim() : "";
   if (!datumCbor) throw new Error(`${handleName} Datum Not Found`);
-  const { lovelace } = await fetchApi(`handles/${handleName}/utxo`).then((res) =>
-    res.json()
-  );
-  const coins = BigInt(lovelace);
+  const coins = BigInt((await json(`handles/${handleName}/utxo`)).lovelace);
   const address = handle.resolved_addresses.ada as Cardano.PaymentAddress;
   return [
     { ...parseUtxoRef(handle.utxo), address },
