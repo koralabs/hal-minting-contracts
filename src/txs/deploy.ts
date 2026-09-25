@@ -2,7 +2,7 @@ import { ScriptDetails, ScriptType } from "@koralabs/kora-labs-common";
 import { type BlockfrostTxClient, toDoubleCbor } from "@koralabs/kora-labs-common/txBuild";
 import { Err, Ok, Result } from "ts-res";
 
-import { Utxo } from "../cardano/index.js";
+import { Serialization, Utxo, utxoRef } from "../cardano/index.js";
 import { CONTRACT_NAME } from "../constants/index.js";
 import {
   buildContracts,
@@ -143,21 +143,44 @@ interface DeployedScripts {
   royaltySpendScriptTxInput: Utxo;
 }
 
-/** The deployed script (per the Handle API) and its reference-script UTxO (per Blockfrost). */
+const scriptHashOf = ([, output]: Utxo) =>
+  output.scriptReference ? Serialization.Script.fromCore(output.scriptReference).hash() : undefined;
+
+type ChainReader = Pick<BlockfrostTxClient, "getUtxo" | "getAddressUtxos">;
+
+/**
+ * The deployed script (per the Handle API) and its live reference-script UTxO (per Blockfrost). The
+ * API's `refScriptUtxo` goes stale when the script is moved; then the UTxO at `refScriptAddress`
+ * carrying this validator's script is used. The UTxO must carry the script the API names.
+ */
 const fetchDeployed = async (
-  blockfrost: Pick<BlockfrostTxClient, "getUtxo">,
+  blockfrost: ChainReader,
   type: ScriptType,
   label: string
 ): Promise<[ScriptDetails, Utxo]> => {
   const details = await fetchDeployedScript(type);
   invariant(details.refScriptUtxo, `${label} has no Ref script UTxO`);
-  const utxo = await blockfrost.getUtxo(details.refScriptUtxo);
-  invariant(utxo[1].scriptReference, `${label} Ref script UTxO carries no script`);
+  let utxo: Utxo;
+  try {
+    utxo = await blockfrost.getUtxo(details.refScriptUtxo);
+  } catch (error) {
+    if (!/already spent/i.test(`${(error as Error)?.message}`) || !details.refScriptAddress) throw error;
+    const live = (await blockfrost.getAddressUtxos(details.refScriptAddress)).find(
+      (u) => scriptHashOf(u) === details.validatorHash
+    );
+    if (!live) throw new Error(`${label} has no live Ref script UTxO at ${details.refScriptAddress}`);
+    details.refScriptUtxo = utxoRef(live);
+    utxo = live;
+  }
+  invariant(
+    scriptHashOf(utxo) === details.validatorHash,
+    `${label} Ref script UTxO ${details.refScriptUtxo} does not carry script ${details.validatorHash}`
+  );
   return [details, utxo];
 };
 
 const fetchAllDeployedScripts = async (
-  blockfrost: Pick<BlockfrostTxClient, "getUtxo">
+  blockfrost: ChainReader
 ): Promise<Result<DeployedScripts, string>> => {
   try {
     const [mintProxyScriptDetails, mintProxyScriptTxInput] = await fetchDeployed(blockfrost, ScriptType.HAL_MINT_PROXY, "Mint Proxy");

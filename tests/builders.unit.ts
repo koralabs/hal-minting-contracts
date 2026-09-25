@@ -289,3 +289,40 @@ describe("Handle API rate limits", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("deployed scripts (Handle API /scripts + Blockfrost)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetRateLimits();
+  });
+  const script = (hex: string): Cardano.Script => ({ __type: Cardano.ScriptType.Plutus, version: Cardano.PlutusLanguageVersion.V2, bytes: hex as never });
+  // two tiny distinct "scripts": the hash is all that matters here
+  const A = script("4e4d01000033222220051200120011");
+  const B = script("4e4d01000033222220051200120012");
+  const hashA = Serialization.Script.fromCore(A).hash();
+  const refUtxo = (txByte: string, s: Cardano.Script): Utxo => [
+    { txId: Cardano.TransactionId(txByte.repeat(64)), index: 0, address: USER_1 as Cardano.PaymentAddress },
+    { address: USER_1 as Cardano.PaymentAddress, value: { coins: BigInt(20_000_000) }, scriptReference: s },
+  ];
+
+  // Failure caught: 1.x read the retired single-object /scripts shape, so every script "had no Ref
+  // script UTxO". The prefix match of ?type= must not let `halmnt` pick `halmntprx`.
+  it("picks the exact type from the Record response and follows a moved reference script", async () => {
+    const { ScriptType } = await import("@koralabs/kora-labs-common");
+    const { fetchAllDeployedScripts } = await import("../src/txs/deploy.js");
+    const entries: Record<string, object> = {};
+    for (const type of Object.values(ScriptType).filter((t) => String(t).startsWith("hal"))) {
+      entries[`addr_${type}`] = { type, latest: true, validatorHash: hashA, refScriptUtxo: `${"1".repeat(64)}#0` };
+    }
+    entries["addr_decoy"] = { type: `${ScriptType.HAL_MINT}prx_old`, latest: true, validatorHash: "00", refScriptUtxo: "x#0" };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(entries), { status: 200 })));
+    const spent = vi.fn(async () => { throw new Error(`${"1".repeat(64)}#0 already spent by ${"9".repeat(64)}`); });
+    const result = await fetchAllDeployedScripts({ getUtxo: spent, getAddressUtxos: async () => [refUtxo("3", B), refUtxo("2", A)] } as never);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.data.mintScriptDetails.type).toBe(ScriptType.HAL_MINT);
+    expect(result.data.mintScriptDetails.refScriptUtxo).toBe(`${"2".repeat(64)}#0`);
+    // negative control: a reference UTxO carrying another script is refused
+    const wrong = await fetchAllDeployedScripts({ getUtxo: async () => refUtxo("4", B), getAddressUtxos: async () => [] } as never);
+    expect(!wrong.ok && wrong.error).toMatch(/does not carry script/);
+  });
+});
