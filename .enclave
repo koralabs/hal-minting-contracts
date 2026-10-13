@@ -1,0 +1,38 @@
+# hal-minting-contracts enclave manifest (proposal, ecosystem-ownership-plan row 5.3).
+#
+# Changes to these paths merging into master need operator approval
+# (K.O.R.A.'s merge_pr cards them). Everything else merges freely.
+# Format: one path per line; trailing "/" = directory prefix. "#" = comment.
+# Why each entry is here: CANONICAL_CONTRACT.md. This file is enclaved itself.
+
+.enclave
+CANONICAL_CONTRACT.md
+
+# C1 validators
+smart-contract/validators/
+smart-contract/lib/
+smart-contract/aiken.toml
+smart-contract/aiken.lock
+smart-contract/plutus.json
+
+# C2 desired on-chain state and settings
+deploy/
+scripts/configs/
+
+# C3 tx builders and datum codecs used by hal-minting-engine
+src/contracts/
+src/txs/
+src/cardano/
+src/store/
+
+# Deployment plan / state
+src/deploymentPlan.ts
+src/deploymentState.ts
+scripts/generateDeploymentPlan.ts
+scripts/run/
+
+# Deploy path
+.github/workflows/
+
+# Owners
+.github/CODEOWNERS

@@ -15,3 +15,6 @@ This repo's documentation is split between product-facing operating context and 
 - [Contract Deployment Pipeline](./spec/contract-deployment-pipeline.md)
 - [Data Model](./spec/data-model.md)
 - [Validator Catalog](./spec/validator-catalog.md)
+
+## Canonical contract
+- [Canonical contract (must-never-violate rules)](../CANONICAL_CONTRACT.md)
