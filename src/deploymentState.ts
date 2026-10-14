@@ -95,7 +95,8 @@ export const parseDesiredDeploymentState = (
     parsed = YAML.parse(raw);
   } catch (error) {
     throw new Error(
-      `${sourceLabel} is not valid YAML: ${error instanceof Error ? error.message : String(error)}`
+      `${sourceLabel} is not valid YAML: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 
