@@ -116,6 +116,7 @@ Royalty updates, reference datum updates, and minting-data administration exist,
 - The repo must own committed desired state for `preview`, `preprod`, and `mainnet`.
 - The planner must compare desired script hashes and settings values to live state and classify drift.
 - The resulting artifacts must be readable by reviewers before any wallet signing occurs.
+- Invalid desired-state YAML errors must identify the source and retain the underlying parser diagnostics for operator troubleshooting.
 
 ## User And Operator Stories
 - As a user, I can place an order for one or more H.A.L. NFTs without needing to know the final metadata datum in advance.
