@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 
 import { loadDesiredDeploymentState, parseDesiredDeploymentState } from "../src/deploymentState.js";
 
@@ -19,6 +20,57 @@ describe("hal deployment state", () => {
       "settings.minting_data.mpt_root_hash",
       "settings.minting_data.whitelist_mpt_root_hash",
     ]);
+  });
+
+  it.each([
+    ["deploy/preview/hal-minting.yaml", "deploy/preview/hal-minting.yaml"],
+    [undefined, "desired deployment state"],
+  ])("preserves the real YAML parse cause with context %s", (sourceLabel, expectedLabel) => {
+    const raw = "network: [preview";
+    let caught: unknown;
+    try {
+      parseDesiredDeploymentState(raw, sourceLabel);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    if (!(caught instanceof Error)) {
+      throw new Error("Expected contextual YAML error", { cause: caught });
+    }
+    expect(caught.cause).toBeInstanceOf(YAML.YAMLParseError);
+    if (!(caught.cause instanceof YAML.YAMLParseError)) {
+      throw new Error("Expected original YAMLParseError cause", { cause: caught.cause });
+    }
+    expect(caught.cause.name).toBe("YAMLParseError");
+    expect(caught.cause.code).toBe("BAD_INDENT");
+    expect(caught.cause.pos).toEqual([17, 18]);
+    expect(caught.cause.linePos).toEqual([{ line: 1, col: 18 }, { line: 1, col: 19 }]);
+    expect(caught.message).toBe(`${expectedLabel} is not valid YAML: ${caught.cause.message}`);
+    expect(caught.cause.message).toContain("Flow sequence in block collection must be sufficiently indented and end with a ]");
+  });
+
+  it("reports the loaded malformed YAML file path and original parser cause", async () => {
+    const path = "tests/fixtures/desired-state-invalid.yaml";
+    await expect(loadDesiredDeploymentState(path)).rejects.toMatchObject({
+      message: expect.stringContaining(`${path} is not valid YAML: `),
+      cause: expect.any(YAML.YAMLParseError),
+    });
+  });
+
+  it("rejects a parsed non-object without inventing a YAML parse cause", () => {
+    let caught: unknown;
+    try {
+      parseDesiredDeploymentState("[]", "desired-array.yaml");
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    if (!(caught instanceof Error)) {
+      throw new Error("Expected semantic deployment error", { cause: caught });
+    }
+    expect(caught.message).toBe("desired-array.yaml must be a YAML object");
+    expect(caught.cause).toBeUndefined();
   });
 
   it("rejects observed-only fields in desired-state YAML", () => {

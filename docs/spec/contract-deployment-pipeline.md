@@ -51,6 +51,8 @@ The parser also prevents accidental configuration drift by rejecting:
 - mismatches between `contract_slug`, `script_type`, and `deployment_handle_slug`,
 - observed-only fields that do not belong in committed state.
 
+YAML syntax failures throw a contextual `Error` whose message identifies the source label (the file path when loaded from disk, otherwise `desired deployment state`). Its `cause` is the original `YAMLParseError`, preserving parser code, positions, and diagnostic details. Semantic validation failures after successful parsing do not fabricate a YAML parse cause.
+
 ## Observed-Only Fields
 The following fields are explicitly blocked from desired YAML because they describe live observations rather than intended steady state:
 - `current_script_hash`
