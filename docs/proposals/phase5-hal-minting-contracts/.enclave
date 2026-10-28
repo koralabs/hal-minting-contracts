@@ -1,0 +1,38 @@
+# hal-minting-contracts enclave manifest - DRAFT (ecosystem-ownership-plan Phase 5, row 5.3). NOT ACTIVE.
+# merge_pr reads only a root .enclave (or v3/.enclave); this copy under docs/proposals/phase5-hal-minting-contracts/ is inert.
+# Adoption = the operator moves it to the repo root. Paths are repo-root-relative.
+# Once adopted, changes to these paths merging into master need operator approval.
+# Format: one path per line; trailing "/" = directory prefix; "#" = comment.
+# Why each entry is here: CANONICAL_CONTRACT.md. This file is enclaved itself.
+# Decision 2 clarification 2026-10-13: exact Aiken/Helios on-chain source only.
+# Test-only sources, npm/JS/TS/builders/config/artifacts/workflows are normal agent review.
+# Embedded test-only hunks are outside policy scope; path-only enforcement cannot distinguish them.
+# Signing/settings/irreversible/double-mint authority remains in CANONICAL_CONTRACT.md.
+
+.enclave
+CANONICAL_CONTRACT.md
+smart-contract/lib/common/cip68.ak
+smart-contract/lib/common/hashes.ak
+smart-contract/lib/common/royalty.ak
+smart-contract/lib/common/utils.ak
+smart-contract/lib/hal_nft_mint/minting_data.ak
+smart-contract/lib/hal_nft_mint/orders.ak
+smart-contract/lib/hal_nft_mint/settings.ak
+smart-contract/lib/hal_nft_mint/settings_v1.ak
+smart-contract/lib/hal_nft_mint/whitelist.ak
+smart-contract/lib/ref_spend/settings.ak
+smart-contract/lib/ref_spend/settings_v1.ak
+smart-contract/lib/validations/mint/utils.ak
+smart-contract/lib/validations/mint/validation.ak
+smart-contract/lib/validations/minting_data/types.ak
+smart-contract/lib/validations/minting_data/utils.ak
+smart-contract/lib/validations/minting_data/validation.ak
+smart-contract/lib/validations/orders_spend/utils.ak
+smart-contract/lib/validations/orders_spend/validation.ak
+smart-contract/validators/halmnt.ak
+smart-contract/validators/halmntmpt.ak
+smart-contract/validators/halmntprx.ak
+smart-contract/validators/halord.ak
+smart-contract/validators/halref.ak
+smart-contract/validators/halrefprx.ak
+smart-contract/validators/halroy.ak

@@ -15,3 +15,6 @@ This repo's documentation is split between product-facing operating context and 
 - [Contract Deployment Pipeline](./spec/contract-deployment-pipeline.md)
 - [Data Model](./spec/data-model.md)
 - [Validator Catalog](./spec/validator-catalog.md)
+
+## Policy proposals (not active)
+- [Canonical contract and enclave draft](./proposals/phase5-hal-minting-contracts/README.md): operator review required.
