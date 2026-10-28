@@ -1,7 +1,6 @@
 // A ledger for validator tests: scalus's Cardano emulator (full ledger rules — balance, fees,
 // signatures, validity, script execution) seeded with arbitrary UTxOs, plus signing keys.
 // Replaces the Helios Emulator the v1 suite ran on.
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 import { Ed25519PrivateKey, ready } from "@cardano-sdk/crypto";
@@ -16,23 +15,26 @@ import { Cardano, completeTx, HalTxPlan, Serialization, slotFromPosixMs, Utxo, u
 
 const scalus = createRequire(import.meta.url)("scalus");
 
-// The parameters the emulator validates with (its embedded mainnet epoch-544 set): fees and the
-// script_data_hash must use the same cost model.
-const COST_MODEL_V2: number[] = JSON.parse(
-  readFileSync(new URL("./fixtures/scalusEmulatorParams.json", import.meta.url), "utf8")
-).costModelV2;
+// The ledger must price and hash (script_data_hash) with exactly the parameters the emulator
+// validates with, so read them from an emulator built the same way as `Ledger`'s rather than
+// pinning a copy: scalus 1.3 changed its embedded preview parameters (the V2 cost model grew
+// from 175 to 332 entries), and the pinned copy made every scripted tx fail "Invalid script data hash".
+const EMULATOR_PARAMS = new scalus.Emulator(new Uint8Array([0xa0]), scalus.SlotConfig.preview).getProtocolParameters();
 
 export const params: ScriptTxProtocolParameters = {
-  minFeeA: BigInt(44),
-  minFeeB: BigInt(155381),
-  priceMemory: ratio("0.0577"),
-  priceSteps: ratio("0.0000721"),
-  minFeeRefScriptCostPerByte: ratio(15),
-  coinsPerUtxoByte: BigInt(4310),
-  stakeKeyDeposit: BigInt(2_000_000),
-  maxTxSize: 16384,
-  maxTxExUnits: { memory: 14_000_000, steps: 10_000_000_000 },
-  costModels: new Map([[Cardano.PlutusLanguageVersion.V2, COST_MODEL_V2]]),
+  minFeeA: BigInt(EMULATOR_PARAMS.txFeePerByte),
+  minFeeB: BigInt(EMULATOR_PARAMS.txFeeFixed),
+  priceMemory: ratio(String(EMULATOR_PARAMS.priceMemory)),
+  priceSteps: ratio(String(EMULATOR_PARAMS.priceSteps)),
+  minFeeRefScriptCostPerByte: ratio(EMULATOR_PARAMS.minFeeRefScriptCostPerByte),
+  coinsPerUtxoByte: BigInt(EMULATOR_PARAMS.utxoCostPerByte),
+  stakeKeyDeposit: BigInt(EMULATOR_PARAMS.stakeAddressDeposit),
+  maxTxSize: EMULATOR_PARAMS.maxTxSize,
+  maxTxExUnits: {
+    memory: Number(EMULATOR_PARAMS.maxTxExecutionMemory),
+    steps: Number(EMULATOR_PARAMS.maxTxExecutionSteps),
+  },
+  costModels: new Map([[Cardano.PlutusLanguageVersion.V2, [...EMULATOR_PARAMS.costModels.PlutusV2]]]),
 };
 
 export interface Key {
