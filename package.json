@@ -43,7 +43,7 @@
     "typescript": "5.9.2",
     "typescript-eslint": "8.71.1",
     "vite-tsconfig-paths": "6.1.1",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "minimatch": "10.2.3",
