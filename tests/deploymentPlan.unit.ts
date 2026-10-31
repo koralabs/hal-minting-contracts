@@ -234,4 +234,87 @@ describe("hal deployment plan", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["halmntprx.mint", "aa"],
+    ["halmnt.withdraw", "bb"],
+    ["halmntmpt.spend", "cc"],
+    ["halord.spend", "dd"],
+    ["halrefprx.spend", "ee"],
+    ["halref.withdraw", "ff"],
+    ["halroy.spend", "gg"],
+  ])("maps contract %s to its own validator hash", (contractName, hash) => {
+    const built = {
+      mintProxy: { mintProxyPolicyHash: "aa" },
+      mint: { mintValidatorHash: "bb" },
+      mintingData: { mintingDataValidatorHash: "cc" },
+      ordersSpend: { ordersSpendValidatorHash: "dd" },
+      refSpendProxy: { refSpendProxyValidatorHash: "ee" },
+      refSpend: { refSpendValidatorHash: "ff" },
+      royaltySpend: { royaltySpendValidatorHash: "gg" },
+    };
+    const desired = {
+      ...desiredState,
+      contracts: [{ ...desiredState.contracts[0], build: { contractName, kind: "validator" } }],
+    } as DesiredDeploymentState;
+    expect(buildExpectedContractStates(desired, (() => built) as never)[0].expectedScriptHash).toBe(hash);
+  });
+
+  it("refuses a contract name it does not know instead of guessing a hash", () => {
+    const desired = {
+      ...desiredState,
+      contracts: [{ ...desiredState.contracts[0], build: { contractName: "nope.spend", kind: "validator" } }],
+    } as DesiredDeploymentState;
+    expect(() => buildExpectedContractStates(desired, (() => ({})) as never)).toThrow(/unsupported contract_name `nope.spend`/);
+  });
+
+  describe("discovery script lookup", () => {
+    const run = async (env: Record<string, string | undefined>, stub?: string) => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "discover-env-"));
+      const saved = { ...process.env };
+      try {
+        if (stub !== undefined) {
+          fs.mkdirSync(path.join(tmpDir, "common"));
+          fs.writeFileSync(
+            path.join(tmpDir, "common", "discover_subhandles.py"),
+            stub,
+            { mode: 0o755 }
+          );
+        }
+        // keep the sibling-checkout fallback (../adahandle-deployments) out of the lookup
+        vi.spyOn(process, "cwd").mockReturnValue(path.join(tmpDir, "work"));
+        delete process.env.DISCOVER_SUBHANDLES_PATH;
+        delete process.env.ADAHANDLE_DEPLOYMENTS_PATH;
+        for (const [k, v] of Object.entries(env)) if (v !== undefined) process.env[k] = v.replace("$DIR", tmpDir);
+        return await discoverNextContractSubhandles({
+          network: "preview",
+          contracts: [desiredState.contracts[0]],
+          liveContracts: [{ contractSlug: "halmntprx", subhandle: "old1@handlecontract" } as never],
+          userAgent: "codex-test",
+        });
+      } finally {
+        process.env = saved;
+        vi.restoreAllMocks();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    };
+
+    it("finds the helper under ADAHANDLE_DEPLOYMENTS_PATH/common", async () => {
+      const out = await run(
+        { ADAHANDLE_DEPLOYMENTS_PATH: "$DIR" },
+        "#!/usr/bin/env python3\nprint('viaroot@handlecontract')\n"
+      );
+      expect(out.halmntprx).toBe("viaroot@handlecontract");
+    });
+
+    it("reports a missing helper with the env vars to set", async () => {
+      await expect(run({ ADAHANDLE_DEPLOYMENTS_PATH: "$DIR/absent" })).rejects.toThrow(/discover_subhandles\.py not found/);
+    });
+
+    it("fails when the helper prints nothing", async () => {
+      await expect(
+        run({ ADAHANDLE_DEPLOYMENTS_PATH: "$DIR" }, "#!/usr/bin/env python3\n")
+      ).rejects.toThrow(/returned empty stdout for halmntprx/);
+    });
+  });
 });
