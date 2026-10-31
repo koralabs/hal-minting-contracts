@@ -2,7 +2,11 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import fs from "fs/promises";
 
 const init = async (folder: string): Promise<Trie> => {
-  const db = new Trie(new Store(folder));
+  const store = new Store(folder);
+  // Open the level DB before use; without this it opens in the background and
+  // early reads can fail with LEVEL_NOT_FOUND.
+  await store.ready();
+  const db = new Trie(store);
   // @ts-expect-error: Library issue
   await db.save();
   return db;
