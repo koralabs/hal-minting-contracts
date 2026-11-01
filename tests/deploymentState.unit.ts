@@ -115,3 +115,44 @@ contracts:
     ).toThrow(/must not include observed-only field `current_script_hash`/);
   });
 });
+
+describe("hal deployment state validation", () => {
+  const base = async () =>
+    YAML.parse(await (await import("node:fs/promises")).readFile("deploy/preview/hal-minting.yaml", "utf8")) as Record<string, any>;
+  const parse = (value: unknown) => parseDesiredDeploymentState(YAML.stringify(value), "state");
+
+  it("accepts the unmodified fixture (negative control for every rejection below)", async () => {
+    expect(parse(await base()).network).toBe("preview");
+  });
+
+  const cases: [string, (v: Record<string, any>) => void, string][] = [
+    ["observed-only field", (v) => { v.observed_at = "x"; }, "must not include observed-only field `observed_at`"],
+    ["schema version", (v) => { v.schema_version = 1; }, "schema_version must equal 2"],
+    ["network", (v) => { v.network = "devnet"; }, "network must be one of"],
+    ["empty contracts", (v) => { v.contracts = []; }, "non-empty array field `contracts`"],
+    ["duplicate contract", (v) => { v.contracts.push(v.contracts[0]); }, "must not repeat contract_slug"],
+    ["contract not object", (v) => { v.contracts[0] = "x"; }, "contracts[0] must be an object"],
+    ["unsupported slug", (v) => { v.contracts[0].contract_slug = "bogus"; }, "contract_slug is not supported"],
+    ["unsupported script type", (v) => { v.contracts[0].script_type = "bogus"; }, "script_type is not supported"],
+    ["mismatched slugs", (v) => { v.contracts[0].script_type = "halmnt"; v.contracts[0].deployment_handle_slug = "halmnt"; }, "must match"],
+    ["bad build kind", (v) => { v.contracts[0].build.kind = "script"; }, "build.kind must be validator or minting_policy"],
+    ["long slug", (v) => { v.contracts[0].contract_slug = "halmntprx12345"; }, "10 characters or fewer"],
+    ["slug with dash", (v) => { v.contracts[0].contract_slug = "hal-mnt"; }, "must not contain '-' or '_'"],
+    ["blank old script type", (v) => { v.contracts[0].old_script_type = " "; }, "must include string field `old_script_type`"],
+    ["non-string assigned handle", (v) => { v.assigned_handles.settings["hal-settings"] = 5; }, "string-or-null field `hal-settings`"],
+    ["ignored settings not array", (v) => { v.ignored_settings = "x"; }, "array field `ignored_settings`"],
+    ["ignored settings item", (v) => { v.ignored_settings = [1]; }, "string array field `ignored_settings`"],
+    ["NaN number", (v) => { v.build_parameters.mint_version = "1"; }, "numeric field `mint_version`"],
+    ["missing object", (v) => { delete v.settings; }, "object field `settings`"],
+  ];
+
+  it.each(cases)("rejects %s", async (_name, mutate, message) => {
+    const v = await base();
+    mutate(v);
+    expect(() => parse(v)).toThrow(message);
+  });
+
+  it("rejects non-object YAML", () => {
+    expect(() => parseDesiredDeploymentState("- a", "state")).toThrow("state must be a YAML object");
+  });
+});
