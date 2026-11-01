@@ -9,7 +9,7 @@ import { gunzipSync } from "node:zlib";
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { ScriptDetails, ScriptType } from "@koralabs/kora-labs-common";
 import { localEvaluator, ratio, valueFromBlockfrost } from "@koralabs/kora-labs-common/txBuild";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   Cardano,
@@ -103,7 +103,7 @@ const halDatum = (name: string) => {
   return Serialization.PlutusData.fromCore(output.datum!);
 };
 
-const rebuild = async (db: Trie, tweak: { whitelistDB?: Trie; dropAssets?: number; extraOrderAmount?: number } = {}) => {
+const rebuild = async (db: Trie, tweak: { whitelistDB?: Trie; dropAssets?: number; extraOrderAmount?: number; beforeMint?: (whitelistDB: Trie) => void; forceProof?: boolean } = {}) => {
   const whitelistDB = tweak.whitelistDB ?? (await whitelistTrie());
   const orders = await prepareOrders({
     isMainnet: false,
@@ -116,9 +116,12 @@ const rebuild = async (db: Trie, tweak: { whitelistDB?: Trie; dropAssets?: numbe
     remainingHals: 9_000,
   });
   if (!orders.ok) throw orders.error;
+  tweak.beforeMint?.(whitelistDB);
   const prepared = await prepareMintTransaction({
     isMainnet: false,
-    aggregatedOrders: orders.data.aggregatedOrdersList[0],
+    aggregatedOrders: tweak.forceProof
+      ? orders.data.aggregatedOrdersList[0].map((o) => ({ ...o, needWhitelistProof: true }))
+      : orders.data.aggregatedOrdersList[0],
     assetsInfo: (fixture.mintedInOrder as string[]).slice(tweak.dropAssets ?? 0).map((assetUtf8Name) => ({ assetUtf8Name, assetDatum: halDatum(assetUtf8Name) })),
     db,
     whitelistDB,
@@ -190,6 +193,18 @@ describe("the live preview mint 31d9bc7d…, rebuilt", () => {
   it("refuses to build over a whitelist trie that does not match the on-chain whitelist root", async () => {
     const other = await Trie.fromList([{ key: Buffer.from("not-the-live-whitelist"), value: Buffer.from("00", "hex") }]);
     await expect(rebuild(await halTrie(), { whitelistDB: other })).rejects.toThrow(/Whitelist Root Hash mismatch/);
+  });
+
+  it("refuses to mint for an order that needs a whitelist proof when the address has no whitelist entry", async () => {
+    await expect(rebuild(await halTrie(), { forceProof: true, beforeMint: (w) => void vi.spyOn(w, "get").mockResolvedValue(undefined) })).rejects.toThrow(/is not whitelisted\. Wait until/);
+    vi.restoreAllMocks();
+    await expect(rebuild(await halTrie())).resolves.toBeDefined(); // negative control: the same order builds when no proof is demanded
+  });
+
+  it("reports which name failed to roll back when the trie cannot be read", async () => {
+    const db = { get: async () => { throw new Error("db down"); } } as unknown as Trie;
+    const result = await rollBackOrdersFromTries({ utf8Names: ["hal-1"], whitelistedValuesData: [], db, whitelistDB: await whitelistTrie() });
+    expect(!result.ok && result.error.message).toBe('Failed to roll back "hal-1" : db down');
   });
 
   it("refuses when fewer assets are supplied than the orders ask for", async () => {
