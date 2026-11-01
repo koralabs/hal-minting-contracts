@@ -22,6 +22,7 @@ import {
   makeWhitelistedValueData,
   PREFIX_100,
   prepareMintTransaction,
+  rollBackOrdersFromTries,
   prepareOrders,
   Serialization,
   Utxo,
@@ -102,8 +103,8 @@ const halDatum = (name: string) => {
   return Serialization.PlutusData.fromCore(output.datum!);
 };
 
-const rebuild = async (db: Trie) => {
-  const whitelistDB = await whitelistTrie();
+const rebuild = async (db: Trie, tweak: { whitelistDB?: Trie; dropAssets?: number; extraOrderAmount?: number } = {}) => {
+  const whitelistDB = tweak.whitelistDB ?? (await whitelistTrie());
   const orders = await prepareOrders({
     isMainnet: false,
     orderTxInputs: [orderUtxo],
@@ -118,7 +119,7 @@ const rebuild = async (db: Trie) => {
   const prepared = await prepareMintTransaction({
     isMainnet: false,
     aggregatedOrders: orders.data.aggregatedOrdersList[0],
-    assetsInfo: (fixture.mintedInOrder as string[]).map((assetUtf8Name) => ({ assetUtf8Name, assetDatum: halDatum(assetUtf8Name) })),
+    assetsInfo: (fixture.mintedInOrder as string[]).slice(tweak.dropAssets ?? 0).map((assetUtf8Name) => ({ assetUtf8Name, assetDatum: halDatum(assetUtf8Name) })),
     db,
     whitelistDB,
     deployedScripts,
@@ -184,5 +185,37 @@ describe("the live preview mint 31d9bc7d…, rebuilt", () => {
 
   it("refuses to build over a trie that does not match the on-chain root (negative control)", async () => {
     await expect(rebuild(await halTrie((fixture.halTrie as [string, number][])[0][0]))).rejects.toThrow(/Root Hash mismatch/);
+  });
+
+  it("refuses to build over a whitelist trie that does not match the on-chain whitelist root", async () => {
+    const other = await Trie.fromList([{ key: Buffer.from("not-the-live-whitelist"), value: Buffer.from("00", "hex") }]);
+    await expect(rebuild(await halTrie(), { whitelistDB: other })).rejects.toThrow(/Whitelist Root Hash mismatch/);
+  });
+
+  it("refuses when fewer assets are supplied than the orders ask for", async () => {
+    await expect(rebuild(await halTrie(), { dropAssets: 1 })).rejects.toThrow(/Assets Info doesn't match/);
+  });
+
+  it("rolls the minted names back to unminted and restores a changed whitelist value", async () => {
+    const names = fixture.mintedInOrder as string[];
+    const db = await halTrie();
+    const before = db.hash!.toString("hex");
+    await rebuild(db); // marks the names minted in db
+    expect(db.hash!.toString("hex")).not.toBe(before);
+    const whitelistDB = await whitelistTrie();
+    const original = (fixture.whitelist as { bech32Address: string; values: { amount: number; time_gap: number; price: string }[] }[])[0];
+    const key = getWhitelistedKey(original.bech32Address);
+    const wanted = makeWhitelistedValueData([{ amount: 1, time_gap: 0, price: BigInt(1) }]);
+    const changedRoot = whitelistDB.hash!.toString("hex");
+    const result = await rollBackOrdersFromTries({
+      utf8Names: names,
+      whitelistedValuesData: [{ address: original.bech32Address, whitelistedValue: [{ amount: 1, time_gap: 0, price: BigInt(1) }] as never }],
+      db,
+      whitelistDB,
+    });
+    expect(result.ok).toBe(true);
+    expect(db.hash!.toString("hex")).toBe(before);
+    expect(whitelistDB.hash!.toString("hex")).not.toBe(changedRoot);
+    expect((await whitelistDB.get(key))!.toString("hex")).toBe(Buffer.from(wanted.toCbor(), "hex").toString("hex"));
   });
 });
