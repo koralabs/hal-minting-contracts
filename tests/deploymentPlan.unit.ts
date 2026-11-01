@@ -318,3 +318,131 @@ describe("hal deployment plan", () => {
     });
   });
 });
+
+describe("hal deployment plan: live-state fetch failures and plan invariants", () => {
+  const callLive = (network: "preview" | "preprod" | "mainnet", fetchFn: typeof fetch) =>
+    fetchLiveContractStates({ network, contracts: [desiredState.contracts[1]], userAgent: "ua", fetchFn });
+
+  it.each([
+    ["preview", "https://preview.api.handle.me/scripts?latest=true&type=hal_mint"],
+    ["preprod", "https://preprod.api.handle.me/scripts?latest=true&type=hal_mint"],
+    ["mainnet", "https://api.handle.me/scripts?latest=true&type=hal_mint"],
+  ] as const)("queries the %s handle API host", async (network, expectedUrl) => {
+    const urls: string[] = [];
+    const live = await callLive(network, (async (url: string) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ scriptHash: "cc" }), { status: 200 });
+    }) as never);
+    expect(urls).toEqual([expectedUrl]);
+    // falls back to scriptHash and a null subhandle when the API omits handle/validatorHash
+    expect(live[0]).toMatchObject({ currentScriptHash: "cc", currentSubhandle: null });
+  });
+
+  it("reports null hash when the API returns neither hash field", async () => {
+    const live = await callLive("preview", (async () => new Response("{}", { status: 200 })) as never);
+    expect(live[0].currentScriptHash).toBeNull();
+  });
+
+  it("fails loudly on a non-404 script lookup error", async () => {
+    await expect(callLive("preview", (async () => new Response(null, { status: 500 })) as never)).rejects.toThrow(
+      "failed to load live halmnt script: HTTP 500"
+    );
+  });
+
+  const settingsWith = (handler: (target: string) => Response) =>
+    fetchLiveSettingsState({ network: "preview", userAgent: "ua", fetchFn: (async (url: string) => handler(String(url))) as never });
+
+  it("fails loudly when the settings handle lookup errors", async () => {
+    await expect(settingsWith(() => new Response(null, { status: 503 }))).rejects.toThrow(
+      "failed to load handle hal@handle_settings: HTTP 503"
+    );
+  });
+
+  it("fails loudly when the settings datum lookup errors", async () => {
+    await expect(
+      settingsWith((t) => (t.endsWith("/datum") ? new Response(null, { status: 502 }) : new Response("{}", { status: 200 })))
+    ).rejects.toThrow("failed to load datum for hal@handle_settings: HTTP 502");
+  });
+
+  it("treats a missing or empty settings datum as no live state", async () => {
+    const live = await settingsWith((t) =>
+      t.endsWith("/datum") ? new Response("  ", { status: 200 }) : new Response(null, { status: 404 })
+    );
+    expect(live).toEqual({ halSettings: null, refSpendSettings: null, mintingData: null });
+    const withHandleNoDatum = await settingsWith((t) =>
+      t.endsWith("/datum") ? new Response(null, { status: 404 }) : new Response(JSON.stringify({ resolved_addresses: { ada: "addr" } }), { status: 200 })
+    );
+    expect(withHandleNoDatum).toEqual({ halSettings: null, refSpendSettings: null, mintingData: null });
+  });
+
+  it("fails loudly when the minting-data utxo lookup errors", async () => {
+    await expect(
+      settingsWith((t) => {
+        if (t.includes("halmntmpt") || t.includes("hal_root")) {
+          return t.endsWith("/utxo") ? new Response(null, { status: 500 }) : new Response(JSON.stringify({ resolved_addresses: { ada: "a" } }), { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      })
+    ).rejects.toThrow(/failed to load utxo for .*: HTTP 500/);
+  });
+
+  const expectedContracts = [
+    ["halmntprx", "aa"], ["halmnt", "bb"], ["halmntmpt", "cc"], ["halord", "dd"], ["halrefprx", "ee"], ["halref", "ff"], ["halroy", "gg"],
+  ].map(([contractSlug, expectedScriptHash]) => ({ contractSlug, scriptType: contractSlug, expectedScriptHash }));
+  const noLiveSettings = { halSettings: null, refSpendSettings: null, mintingData: null };
+
+  it("reuses the live subhandle, then the assigned one, when the script hash already matches", () => {
+    const plan = buildDeploymentPlan({
+      desired: desiredState,
+      expectedContracts,
+      liveContracts: [
+        { contractSlug: "halmntprx", scriptType: "halmntprx", currentScriptHash: "aa", currentSubhandle: null },
+        { contractSlug: "halmnt", scriptType: "halmnt", currentScriptHash: "bb", currentSubhandle: "live1@handlecontract" },
+      ],
+      liveSettings: noLiveSettings,
+      nextSubhandles: {},
+    });
+    const [proxy, mint] = plan.summaryJson.contracts;
+    expect(proxy.drift_type).toBe("no_change");
+    expect(proxy.subhandle).toEqual({ action: "reuse", value: "hal_mnt_prxy@handle_contract", is_new: false });
+    expect(mint.subhandle.value).toBe("live1@handlecontract");
+  });
+
+  it("plans no handle when a changed script has no replacement subhandle", () => {
+    const plan = buildDeploymentPlan({
+      desired: desiredState,
+      expectedContracts,
+      liveContracts: [
+        { contractSlug: "halmntprx", scriptType: "halmntprx", currentScriptHash: "zz", currentSubhandle: null },
+        { contractSlug: "halmnt", scriptType: "halmnt", currentScriptHash: "bb", currentSubhandle: null },
+      ],
+      liveSettings: noLiveSettings,
+      nextSubhandles: {},
+    });
+    const proxy = plan.summaryJson.contracts[0];
+    expect(proxy.drift_type).toBe("script_hash_only");
+    expect(proxy.subhandle).toEqual({ action: "allocate", value: null, is_new: true });
+    expect(proxy.expected_post_deploy_state.assigned_handles.scripts).toEqual([]);
+  });
+
+  it("refuses to plan when live or expected state is missing for a contract", () => {
+    expect(() =>
+      buildDeploymentPlan({ desired: desiredState, expectedContracts, liveContracts: [], liveSettings: noLiveSettings, nextSubhandles: {} })
+    ).toThrow("missing expected/live contract state for halmntprx");
+  });
+
+  it("refuses to plan settings when an expected contract hash is absent", () => {
+    expect(() =>
+      buildDeploymentPlan({
+        desired: desiredState,
+        expectedContracts: expectedContracts.filter((c) => c.contractSlug !== "halroy"),
+        liveContracts: [
+          { contractSlug: "halmntprx", scriptType: "halmntprx", currentScriptHash: "aa", currentSubhandle: null },
+          { contractSlug: "halmnt", scriptType: "halmnt", currentScriptHash: "bb", currentSubhandle: null },
+        ],
+        liveSettings: noLiveSettings,
+        nextSubhandles: {},
+      })
+    ).toThrow("missing expected contract halroy");
+  });
+});
