@@ -16,8 +16,7 @@ jobs:
     secrets: inherit
     with:
       desired_path: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.desired_path || '' }}
-      node_version: "22.13"
-      timeout_minutes: 15
+      node_version: "26"      timeout_minutes: 15
       kora_user_agent: ${{ vars.KORA_USER_AGENT }}
       install_command: npm ci
       planner_command: npx tsx scripts/generateDeploymentPlan.ts
