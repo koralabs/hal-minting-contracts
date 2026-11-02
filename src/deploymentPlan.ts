@@ -41,6 +41,13 @@ interface HandlePayload {
   };
 }
 
+interface LiveScriptEntry {
+  type?: string;
+  latest?: boolean;
+  validatorHash?: string;
+  handle?: string;
+}
+
 interface HandleUtxoPayload {
   lovelace?: number;
 }
@@ -142,27 +149,23 @@ export const fetchLiveContractStates = async ({
   return Promise.all(
     contracts.map(async (contract) => {
       const response = await fetchFn(
-        `${baseUrl}/scripts?latest=true&type=${encodeURIComponent(contract.oldScriptType ?? contract.scriptType)}`,
+        `${baseUrl}/scripts?latest=true&type=${encodeURIComponent(contract.scriptType)}`,
         { headers: { "User-Agent": userAgent } }
       );
-      if (response.status === 404) {
-        return {
-          contractSlug: contract.contractSlug,
-          scriptType: contract.scriptType,
-          currentScriptHash: null,
-          currentSubhandle: null,
-        };
-      }
       if (!response.ok) {
         throw new Error(`failed to load live ${contract.contractSlug} script: HTTP ${response.status}`);
       }
-      const payload = await response.json();
-      const currentScriptHash = String(payload.validatorHash ?? payload.scriptHash ?? "").trim() || null;
+      // /scripts is keyed by script address and `type` is a prefix match (halmnt also returns
+      // halmntmpt/halmntprx), so pick this contract's own latest entry. No entry = not deployed.
+      const payload = (await response.json()) as Record<string, LiveScriptEntry>;
+      const live = Object.values(payload).find(
+        (entry) => entry.type === contract.scriptType && entry.latest
+      );
       return {
         contractSlug: contract.contractSlug,
         scriptType: contract.scriptType,
-        currentScriptHash,
-        currentSubhandle: String(payload.handle ?? "").trim() || null,
+        currentScriptHash: String(live?.validatorHash ?? "").trim() || null,
+        currentSubhandle: String(live?.handle ?? "").trim() || null,
       };
     })
   );
@@ -303,7 +306,8 @@ const fetchHandleDatum = async ({
 }) => {
   const response = await fetchFn(
     `${handlesApiBaseUrlForNetwork(network)}/handles/${encodeURIComponent(handleName)}/datum`,
-    { headers: { "User-Agent": userAgent } }
+    // The API decodes the datum to JSON by default; the planner needs the raw CBOR hex.
+    { headers: { "User-Agent": userAgent, Accept: "text/plain" } }
   );
   if (response.status === 404) return null;
   if (!response.ok) {

@@ -92,6 +92,9 @@ jobs:
         shell: bash
         env:
           DISCOVER_SUBHANDLES_PATH: ${{ github.workspace }}/adahandle-deployments/common/discover_subhandles.py
+          PREVIEW_BLOCKFROST_API_KEY: ${{ secrets.PREVIEW_BLOCKFROST_API_KEY }}
+          PREPROD_BLOCKFROST_API_KEY: ${{ secrets.PREPROD_BLOCKFROST_API_KEY }}
+          MAINNET_BLOCKFROST_API_KEY: ${{ secrets.MAINNET_BLOCKFROST_API_KEY }}
         run: |
           set -eu
           mkdir -p artifacts
@@ -100,6 +103,9 @@ jobs:
             [ -z "$desired_path" ] && continue
             network="$(basename "$(dirname "$desired_path")")"
             args=(--desired "$desired_path" --artifacts-dir "artifacts/$network")
+            # SubHandle ordinal discovery reads the network's Blockfrost key from BLOCKFROST_API_KEY.
+            bf_var="$(echo "$network" | tr '[:lower:]' '[:upper:]')_BLOCKFROST_API_KEY"
+            export BLOCKFROST_API_KEY="${!bf_var:-}"
             if [ -n "$CHANGE_ADDRESS" ]; then
               args+=(--change-address "$CHANGE_ADDRESS" --cbor-utxos-json "$CBOR_UTXOS_JSON")
             fi
