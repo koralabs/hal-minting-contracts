@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - '.github/**'
       - 'docs/**'
+      - '.local-test-evidence.json'
   workflow_dispatch:
 permissions:
   contents: read
