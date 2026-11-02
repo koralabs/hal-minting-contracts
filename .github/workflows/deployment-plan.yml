@@ -9,15 +9,129 @@ on:
         description: Desired deployment YAML path
         required: false
         default: deploy/preview/hal-minting.yaml
-
+# This repo is public, and a public repo cannot call the reusable workflow in the private
+# adahandle-deployments repo ("workflow was not found"). So the shared steps run here, using the
+# scripts from a checkout of adahandle-deployments (common/*.py).
 jobs:
   deployment-plan:
-    uses: koralabs/adahandle-deployments/.github/workflows/contract-deployment-plan.yml@master
-    secrets: inherit
-    with:
-      desired_path: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.desired_path || '' }}
-      node_version: "26"
-      timeout_minutes: 15
-      kora_user_agent: ${{ vars.KORA_USER_AGENT }}
-      install_command: npm ci
-      planner_command: npx tsx scripts/generateDeploymentPlan.ts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KORA_USER_AGENT: ${{ vars.KORA_USER_AGENT }}
+      DESIRED_PATH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.desired_path || '' }}
+      CHANGE_ADDRESS: ""
+      CBOR_UTXOS_JSON: ""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout deployment scripts
+        uses: actions/checkout@v4
+        with:
+          repository: koralabs/adahandle-deployments
+          token: ${{ secrets.DEPLOYMENT_ACCESS_TOKEN }}
+          path: adahandle-deployments
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          check-latest: true
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve target networks
+        id: networks
+        shell: bash
+        run: |
+          set -eu
+          if [ -n "$DESIRED_PATH" ]; then
+            desired_paths=("$DESIRED_PATH")
+          else
+            mapfile -t desired_paths < <(find deploy -mindepth 2 -maxdepth 2 -name '*.yaml' | sort)
+          fi
+          if { [ -n "$CHANGE_ADDRESS" ] || [ -n "$CBOR_UTXOS_JSON" ]; } && { [ -z "$CHANGE_ADDRESS" ] || [ -z "$CBOR_UTXOS_JSON" ]; }; then
+            echo "change_address and cbor_utxos_json must be provided together" >&2
+            exit 1
+          fi
+          {
+            echo "desired_paths<<EOF"
+            printf '%s\n' "${desired_paths[@]}"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify HANDLECONTRACT native-script secret parity (per network)
+        shell: bash
+        env:
+          HANDLECONTRACT_NATIVE_SCRIPT_CBOR_PREVIEW: ${{ vars.HANDLECONTRACT_NATIVE_SCRIPT_CBOR_PREVIEW }}
+          HANDLECONTRACT_NATIVE_SCRIPT_CBOR_PREPROD: ${{ vars.HANDLECONTRACT_NATIVE_SCRIPT_CBOR_PREPROD }}
+          HANDLECONTRACT_NATIVE_SCRIPT_CBOR_MAINNET: ${{ vars.HANDLECONTRACT_NATIVE_SCRIPT_CBOR_MAINNET }}
+        run: |
+          set -eu
+          while IFS= read -r desired_path; do
+            [ -z "$desired_path" ] && continue
+            network="$(basename "$(dirname "$desired_path")")"
+            case "$network" in
+              preview)  secret_var=HANDLECONTRACT_NATIVE_SCRIPT_CBOR_PREVIEW ;;
+              preprod)  secret_var=HANDLECONTRACT_NATIVE_SCRIPT_CBOR_PREPROD ;;
+              mainnet)  secret_var=HANDLECONTRACT_NATIVE_SCRIPT_CBOR_MAINNET ;;
+              *) echo "::error::unsupported network derived from $desired_path: $network"; exit 2 ;;
+            esac
+            if [ -z "${!secret_var:-}" ]; then
+              echo "::warning::no \$$secret_var configured at the org/repo level — skipping native-script parity check for $network. The deployment may fail at signing if the secret is required for this contract repo. Set \$$secret_var as an organization variable to enable the preflight."
+              continue
+            fi
+            echo "::group::Native-script parity check ($network, $desired_path)"
+            HANDLECONTRACT_NATIVE_SCRIPT_CBOR="${!secret_var}" \
+              python3 adahandle-deployments/common/check_native_script_parity.py --network "$network" --secret-env HANDLECONTRACT_NATIVE_SCRIPT_CBOR
+            echo "::endgroup::"
+          done <<< '${{ steps.networks.outputs.desired_paths }}'
+
+      - name: Generate deployment artifacts
+        shell: bash
+        env:
+          DISCOVER_SUBHANDLES_PATH: ${{ github.workspace }}/adahandle-deployments/common/discover_subhandles.py
+        run: |
+          set -eu
+          mkdir -p artifacts
+          read -r -a planner_command <<< "npx tsx scripts/generateDeploymentPlan.ts"
+          while IFS= read -r desired_path; do
+            [ -z "$desired_path" ] && continue
+            network="$(basename "$(dirname "$desired_path")")"
+            args=(--desired "$desired_path" --artifacts-dir "artifacts/$network")
+            if [ -n "$CHANGE_ADDRESS" ]; then
+              args+=(--change-address "$CHANGE_ADDRESS" --cbor-utxos-json "$CBOR_UTXOS_JSON")
+            fi
+            "${planner_command[@]}" "${args[@]}"
+          done <<< '${{ steps.networks.outputs.desired_paths }}'
+
+      - name: Checkout minting engine
+        uses: actions/checkout@v4
+        with:
+          repository: koralabs/minting.handle.me
+          token: ${{ secrets.DEPLOYMENT_ACCESS_TOKEN }}
+          path: minting.handle.me
+
+      - name: Install minting engine dependencies
+        run: npm ci
+        working-directory: minting.handle.me
+
+      - name: Ensure handlecontract sessions
+        env:
+          POLICY_KEY: ${{ secrets.POLICY_KEY }}
+          PREVIEW_POLICY_ID: ${{ secrets.PREVIEW_POLICY_ID }}
+          PREPROD_POLICY_ID: ${{ secrets.PREPROD_POLICY_ID }}
+          MAINNET_POLICY_ID: ${{ secrets.MAINNET_POLICY_ID }}
+          PREVIEW_BLOCKFROST_API_KEY: ${{ secrets.PREVIEW_BLOCKFROST_API_KEY }}
+          PREPROD_BLOCKFROST_API_KEY: ${{ secrets.PREPROD_BLOCKFROST_API_KEY }}
+          MAINNET_BLOCKFROST_API_KEY: ${{ secrets.MAINNET_BLOCKFROST_API_KEY }}
+        run: python3 adahandle-deployments/common/ensure_handlecontract_sessions.py --artifacts-dir artifacts --minting-repo minting.handle.me
+
+      - name: Upload deployment plan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-plan-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 7
