@@ -38,6 +38,9 @@ jobs:
           node-version: "26"
           check-latest: true
 
+      - name: Authenticate GitHub Packages
+        run: npm config set //npm.pkg.github.com/:_authToken ${{ secrets.DEPLOYMENT_ACCESS_TOKEN }}
+
       - name: Install dependencies
         run: npm ci
 
@@ -92,6 +95,9 @@ jobs:
         shell: bash
         env:
           DISCOVER_SUBHANDLES_PATH: ${{ github.workspace }}/adahandle-deployments/common/discover_subhandles.py
+          PREVIEW_BLOCKFROST_API_KEY: ${{ secrets.PREVIEW_BLOCKFROST_API_KEY }}
+          PREPROD_BLOCKFROST_API_KEY: ${{ secrets.PREPROD_BLOCKFROST_API_KEY }}
+          MAINNET_BLOCKFROST_API_KEY: ${{ secrets.MAINNET_BLOCKFROST_API_KEY }}
         run: |
           set -eu
           mkdir -p artifacts
@@ -100,33 +106,24 @@ jobs:
             [ -z "$desired_path" ] && continue
             network="$(basename "$(dirname "$desired_path")")"
             args=(--desired "$desired_path" --artifacts-dir "artifacts/$network")
+            # SubHandle ordinal discovery reads the network's Blockfrost key from BLOCKFROST_API_KEY.
+            bf_var="$(echo "$network" | tr '[:lower:]' '[:upper:]')_BLOCKFROST_API_KEY"
+            export BLOCKFROST_API_KEY="${!bf_var:-}"
             if [ -n "$CHANGE_ADDRESS" ]; then
               args+=(--change-address "$CHANGE_ADDRESS" --cbor-utxos-json "$CBOR_UTXOS_JSON")
             fi
             "${planner_command[@]}" "${args[@]}"
           done <<< '${{ steps.networks.outputs.desired_paths }}'
 
-      - name: Checkout minting engine
-        uses: actions/checkout@v4
-        with:
-          repository: koralabs/minting.handle.me
-          token: ${{ secrets.DEPLOYMENT_ACCESS_TOKEN }}
-          path: minting.handle.me
-
-      - name: Install minting engine dependencies
-        run: npm ci
-        working-directory: minting.handle.me
-
+      # Sessions spend money (the engine pays the root-owner fee), so they run only on an explicit
+      # dispatch; push/PR runs just produce the plan artifacts.
       - name: Ensure handlecontract sessions
+        if: github.event_name == 'workflow_dispatch'
         env:
-          POLICY_KEY: ${{ secrets.POLICY_KEY }}
-          PREVIEW_POLICY_ID: ${{ secrets.PREVIEW_POLICY_ID }}
-          PREPROD_POLICY_ID: ${{ secrets.PREPROD_POLICY_ID }}
-          MAINNET_POLICY_ID: ${{ secrets.MAINNET_POLICY_ID }}
-          PREVIEW_BLOCKFROST_API_KEY: ${{ secrets.PREVIEW_BLOCKFROST_API_KEY }}
-          PREPROD_BLOCKFROST_API_KEY: ${{ secrets.PREPROD_BLOCKFROST_API_KEY }}
-          MAINNET_BLOCKFROST_API_KEY: ${{ secrets.MAINNET_BLOCKFROST_API_KEY }}
-        run: python3 adahandle-deployments/common/ensure_handlecontract_sessions.py --artifacts-dir artifacts --minting-repo minting.handle.me
+          PREVIEW_KORA_BOT_MINT_SECRET: ${{ secrets.PREVIEW_KORA_BOT_MINT_SECRET }}
+          PREPROD_KORA_BOT_MINT_SECRET: ${{ secrets.PREPROD_KORA_BOT_MINT_SECRET }}
+          MAINNET_KORA_BOT_MINT_SECRET: ${{ secrets.MAINNET_KORA_BOT_MINT_SECRET }}
+        run: python3 adahandle-deployments/common/ensure_handlecontract_sessions_via_engine.py --artifacts-dir artifacts
 
       - name: Upload deployment plan artifacts
         uses: actions/upload-artifact@v4

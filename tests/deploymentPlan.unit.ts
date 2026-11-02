@@ -97,10 +97,11 @@ describe("hal deployment plan", () => {
       contracts: desiredState.contracts,
       userAgent: "codex-test",
       fetchFn: vi.fn(async (url) => {
-        if (String(url).includes("hal_mint_proxy")) {
-          return new Response(null, { status: 404 });
+        // /scripts is keyed by address; an unknown family is an empty object.
+        if (String(url).includes("type=halmntprx")) {
+          return new Response("{}", { status: 200 });
         }
-        return new Response(JSON.stringify({ validatorHash: "bb", handle: "halmnt1@handlecontract" }), { status: 200 });
+        return new Response(JSON.stringify({ addr_live: { type: "halmnt", latest: true, validatorHash: "bb", handle: "halmnt1@handlecontract" } }), { status: 200 });
       }) as typeof fetch,
     });
 
@@ -324,17 +325,17 @@ describe("hal deployment plan: live-state fetch failures and plan invariants", (
     fetchLiveContractStates({ network, contracts: [desiredState.contracts[1]], userAgent: "ua", fetchFn });
 
   it.each([
-    ["preview", "https://preview.api.handle.me/scripts?latest=true&type=hal_mint"],
-    ["preprod", "https://preprod.api.handle.me/scripts?latest=true&type=hal_mint"],
-    ["mainnet", "https://api.handle.me/scripts?latest=true&type=hal_mint"],
+    ["preview", "https://preview.api.handle.me/scripts?latest=true&type=halmnt"],
+    ["preprod", "https://preprod.api.handle.me/scripts?latest=true&type=halmnt"],
+    ["mainnet", "https://api.handle.me/scripts?latest=true&type=halmnt"],
   ] as const)("queries the %s handle API host", async (network, expectedUrl) => {
     const urls: string[] = [];
     const live = await callLive(network, (async (url: string) => {
       urls.push(String(url));
-      return new Response(JSON.stringify({ scriptHash: "cc" }), { status: 200 });
+      return new Response(JSON.stringify({ addr_live: { type: "halmnt", latest: true, validatorHash: "cc" } }), { status: 200 });
     }) as never);
     expect(urls).toEqual([expectedUrl]);
-    // falls back to scriptHash and a null subhandle when the API omits handle/validatorHash
+    // null subhandle when the API entry omits handle
     expect(live[0]).toMatchObject({ currentScriptHash: "cc", currentSubhandle: null });
   });
 
