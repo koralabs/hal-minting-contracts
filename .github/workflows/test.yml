@@ -10,94 +10,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
         with:
-          node-version: 22
-          check-latest: true
-
-      - name: Update npm
-        run: npm install -g npm@latest
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Libssl
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify local test evidence (tests run locally, never in Actions)
         run: |
-          wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb
-          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb
-
-      - name: Install Aiken
-        run: npm install -g @aiken-lang/aiken@1.0.29-alpha
-
-      - name: Run fmt
-        working-directory: smart-contract
-        run: aiken fmt --check
-
-      - name: Run lint
-        run: npm run lint
-
-  aiken-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22
-          check-latest: true
-
-      - name: Update npm
-        run: npm install -g npm@latest
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Libssl
-        run: |
-          wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb
-          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb
-
-      - name: Install Aiken
-        run: npm install -g @aiken-lang/aiken@1.0.29-alpha
-
-      - name: Run fmt
-        working-directory: smart-contract
-        run: aiken fmt --check
-
-      - name: Run tests
-        working-directory: smart-contract
-        run: aiken check
-
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22
-          check-latest: true
-
-      - name: Update npm
-        run: npm install -g npm@latest
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run lint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm run test
+          c=$(jq -er 'select(.result == "pass") | .commit' .local-test-evidence.json) && git diff --quiet "$c" HEAD -- . ':!.local-test-evidence.json' || { echo "::error::no valid local test evidence for this commit: run adahandle-deployments/common/test-evidence.sh record locally and push the evidence commit"; exit 1; }
